@@ -472,6 +472,12 @@ export async function computeSingleCollectionSuggestions({ minListings = 10 } = 
           // o usuário digita (ver normalizeFloat em floatMath.js). Sem isso
           // ela erra pra qualquer skin cuja faixa não seja 0–1 inteira.
           inputFloatRange: cheapestUnit.skin.floatRange,
+          // Faixa de float BRUTA do wear específico que você vai comprar
+          // (ex: Field-Tested já recortado pro min/max dessa skin) — sem
+          // isso a calculadora podia pedir um float impossível pra esse wear
+          // (ex: "até 0.07" pra um item que você só compra em Field-Tested,
+          // que nunca desce de 0.15).
+          inputWearFloatRange: bandForWear(cheapestUnit.skin, cheapestUnit.wear.exterior),
           assumedAvgFloat,
           cost: costBrl,
           outcomeCount: outcomes.length,
@@ -636,6 +642,7 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
               unitPriceBrl: (mix.a.wear.priceUsdCents / 100) * rate,
               iconUrl: mix.a.skin.iconUrl,
               floatRange: mix.a.skin.floatRange,
+              wearFloatRange: bandForWear(mix.a.skin, mix.a.wear.exterior),
               isSouvenir: !!mix.a.isSouvenir,
               marketHashName: marketHashName({
                 weapon: mix.a.skin.weapon,
@@ -652,6 +659,7 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
               unitPriceBrl: (mix.b.wear.priceUsdCents / 100) * rate,
               iconUrl: mix.b.skin.iconUrl,
               floatRange: mix.b.skin.floatRange,
+              wearFloatRange: bandForWear(mix.b.skin, mix.b.wear.exterior),
               isSouvenir: !!mix.b.isSouvenir,
               marketHashName: marketHashName({
                 weapon: mix.b.skin.weapon,

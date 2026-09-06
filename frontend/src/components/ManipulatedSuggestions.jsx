@@ -457,6 +457,7 @@ export default function ManipulatedSuggestions() {
                                   legs={s.legs.map((l) => ({
                                     count: l.count,
                                     floatRange: l.floatRange,
+                                    wearRange: l.wearFloatRange,
                                     label: `${l.count}x ${l.isSouvenir ? "Lembrança " : ""}${l.skinName} (${l.wear})`,
                                   }))}
                                 />

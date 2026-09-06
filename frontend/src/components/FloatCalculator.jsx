@@ -79,7 +79,32 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
     return { min: r?.min ?? 0, max: r?.max ?? 1, has: !!r };
   }
 
-  const parsed = floats.map((f) => (f.trim() === "" ? null : Number(f)));
+  // Faixa relativa (0–1) que essa perna consegue alcançar de verdade, dado
+  // que ela já está travada num wear específico (ex: Field-Tested) — não a
+  // faixa 0–1 inteira da skin. Sem isso a calculadora podia pedir um float
+  // impossível pra aquele wear (ex: "até 0.07" pra algo que só se compra em
+  // Field-Tested, que nunca desce de 0.15).
+  function legWearAdjustedRange(legIdx) {
+    const leg = resolvedLegs[legIdx];
+    const r = legRange(legIdx);
+    if (!leg?.wearRange) return { min: 0, max: 1, has: false };
+    return {
+      min: normalizeFloat(leg.wearRange.min, r.min, r.max),
+      max: normalizeFloat(leg.wearRange.max, r.min, r.max),
+      has: true,
+    };
+  }
+
+  // Float digitado usa vírgula decimal (padrão BR) — Number() sozinho não
+  // entende "0,04" e retorna NaN, tratando o campo como se estivesse vazio.
+  function parseFloatInput(raw) {
+    const trimmed = raw.trim();
+    if (trimmed === "") return null;
+    const n = Number(trimmed.replace(",", "."));
+    return isNaN(n) ? null : n;
+  }
+
+  const parsed = floats.map((f) => parseFloatInput(f));
   const adjusted = parsed.map((v, i) => {
     if (v == null || isNaN(v)) return null;
     const r = legRange(slotLegs[i]);
@@ -136,7 +161,7 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
       // faixa de float).
       const emptyByLeg = new Map();
       floats.forEach((f, i) => {
-        if (f.trim() !== "" && !isNaN(Number(f))) return;
+        if (parseFloatInput(f) != null) return;
         const legIdx = slotLegs[i];
         emptyByLeg.set(legIdx, (emptyByLeg.get(legIdx) ?? 0) + 1);
       });
@@ -167,14 +192,35 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
               <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
                 {emptyLegEntries.map(([legIdx, count]) => {
                   const r = legRange(legIdx);
-                  const rawMax = denormalizeFloat(clampedAdjustedMax, r.min, r.max);
-                  const rawMin = denormalizeFloat(clampedAdjustedMin, r.min, r.max);
+                  const wearAdj = legWearAdjustedRange(legIdx);
+                  // A perna já está travada num wear específico (ex:
+                  // Field-Tested) — o float dela só pode variar DENTRO da
+                  // faixa desse wear, nunca fora. Cruza isso com o alvo
+                  // calculado (que ignora o wear) antes de converter pra
+                  // float bruto, senão dá pra pedir algo impossível (tipo
+                  // "até 0.07" pra um item que só existe em Field-Tested).
+                  const intersectMin = Math.max(clampedAdjustedMin, wearAdj.min);
+                  const intersectMax = Math.min(clampedAdjustedMax, wearAdj.max);
+                  const legImpossible = wearAdj.has && intersectMin > intersectMax;
+                  const rawMax = denormalizeFloat(legImpossible ? wearAdj.max : intersectMax, r.min, r.max);
+                  const rawMin = denormalizeFloat(legImpossible ? wearAdj.min : intersectMin, r.min, r.max);
                   const leg = resolvedLegs[legIdx];
                   return (
                     <li key={legIdx}>
                       {leg.label ? <strong>{leg.label}</strong> : "entrada"} — {count}{" "}
-                      restante{count > 1 ? "s" : ""}: float até <strong>{fmtFloat(rawMax)}</strong>
-                      {clampedAdjustedMin > 0 && <> (mínimo {fmtFloat(rawMin)})</>} cada
+                      restante{count > 1 ? "s" : ""}:{" "}
+                      {legImpossible ? (
+                        <span style={{ color: COLORS.rust }}>
+                          não dá pra bater isso só com o wear dessa perna (o wear escolhido só
+                          alcança float {fmtFloat(rawMin)}–{fmtFloat(rawMax)} de qualquer jeito) —
+                          precisa a outra perna compensar mais.
+                        </span>
+                      ) : (
+                        <>
+                          float até <strong>{fmtFloat(rawMax)}</strong>
+                          {intersectMin > wearAdj.min && <> (mínimo {fmtFloat(rawMin)})</>} cada
+                        </>
+                      )}
                     </li>
                   );
                 })}
