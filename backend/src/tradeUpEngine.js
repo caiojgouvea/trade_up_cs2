@@ -144,6 +144,17 @@ function computeFloatGuidance({ cheapestInput, outputs, rate }) {
   };
 }
 
+// O Steam Market agrupa por tag de busca, e nem toda tag é uma Coleção de
+// verdade do jogo (com uma escada de raridade coesa pra trade-up). Além das
+// ~93 "The X Collection" reais, existem tags tipo "Broken Fang Agents"
+// (agentes, nem têm float) e "Limited Edition Item" (um bucket genérico pra
+// skins promocionais avulsas que NÃO necessariamente compartilham a mesma
+// coleção real — testado manualmente: mistura AK-47 Aphrodite, M4A1-S
+// Solitude, Desert Eagle Heat Treated e XM1014 Solitude, que não têm
+// garantia nenhuma de dar trade-up entre si no jogo). Sugestão só faz
+// sentido pra coleções que seguem o nome padrão oficial.
+const REAL_COLLECTION_FILTER = "collection_tag IN (SELECT tag FROM collections WHERE name LIKE 'The % Collection')";
+
 // Gera sugestões de trade-up de UMA coleção só (o tipo clássico: 10 skins da
 // mesma coleção e raridade). Trade-ups misturando coleções ficam pra uma
 // próxima etapa (o espaço de busca cresce muito mais).
@@ -160,7 +171,8 @@ export async function computeSingleCollectionSuggestions({ minListings = 5 } = {
          AND special = 0
          AND souvenir = 0
          AND rarity IS NOT NULL
-         AND price_usd_cents IS NOT NULL`
+         AND price_usd_cents IS NOT NULL
+         AND ${REAL_COLLECTION_FILTER}`
     )
     .all();
 
@@ -251,6 +263,16 @@ export async function computeSingleCollectionSuggestions({ minListings = 5 } = {
 // item específico da linha).
 export async function getCollectionOutcomeMenu(collectionTag) {
   const rate = await getUsdToBrlRate(db);
+
+  const collection = db.prepare("SELECT name FROM collections WHERE tag = ?").get(collectionTag);
+  if (!collection || !/^The .+ Collection$/.test(collection.name)) {
+    // Não é uma Coleção de verdade do jogo (ex: pacote de Agentes, ou o
+    // bucket genérico "Limited Edition Item") — não dá pra calcular trade-up
+    // com garantia nenhuma de que os itens realmente compartilham a mesma
+    // escada de raridade no jogo.
+    return { rate, byTier: {} };
+  }
+
   const floatMap = getFloatRangeMap();
 
   const rows = db

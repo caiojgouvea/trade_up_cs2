@@ -102,18 +102,18 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName }) {
               Com os {filledCount} float(s) já preenchidos, não tem como as {remaining} restantes
               (float entre 0 e 1) puxarem a média pra faixa de <strong>{band.name}</strong>.
             </>
+          ) : remaining === 1 ? (
+            <>
+              Falta <strong>1</strong>. Pra fechar em <strong>{band.name}</strong>, essa última
+              precisa ter float até <strong>{fmtFloat(clampedMax)}</strong>
+              {clampedMin > 0 && <> (e no mínimo {fmtFloat(clampedMin)})</>}.
+            </>
           ) : (
             <>
-              Faltam <strong>{remaining}</strong>. Pra média cair em{" "}
-              <strong>{band.name}</strong> ({fmtFloat(band.min)}–{fmtFloat(band.max)}), a média das
-              que faltam precisa ficar entre{" "}
-              <strong>
-                {fmtFloat(clampedMin)} e {fmtFloat(clampedMax)}
-              </strong>
-              {remaining === 1 && (
-                <> — ou seja, a última precisa ter float entre esses dois valores.</>
-              )}
-              .
+              Faltam <strong>{remaining}</strong>. Pra fechar em <strong>{band.name}</strong>, dá
+              pra usar float até <strong>{fmtFloat(clampedMax)}</strong> em cada uma das que faltam
+              {clampedMin > 0 && <> (mínimo {fmtFloat(clampedMin)} cada)</>} — pode misturar valores
+              diferentes, contanto que a média delas não passe disso.
             </>
           )}
         </div>
