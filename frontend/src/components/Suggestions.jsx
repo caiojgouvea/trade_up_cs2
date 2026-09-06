@@ -408,6 +408,7 @@ export default function Suggestions() {
                               <ItemThumb iconUrl={s.inputIconUrl} rarity={s.tier} size={28} />
                               <span>
                                 {s.inputSkin}
+                                {s.stattrak && <span style={{ color: COLORS.gold }}> (StatTrak™)</span>}
                                 {s.inputWear && (
                                   <span style={{ color: COLORS.textDim }}> ({s.inputWear})</span>
                                 )}

@@ -166,7 +166,7 @@ function computeFloatGuidance({ cheapestInput, outputs, rate }) {
 
   return {
     available: true,
-    bestOutcomeName: `${best.skin.weapon} | ${best.skin.skin}`,
+    bestOutcomeName: `${best.skin.weapon} | ${best.skin.skin}${best.skin.stattrak ? " (StatTrak™)" : ""}`,
     bestOutcomeWear: best.wear.exterior,
     bestOutcomePrice: (best.wear.priceUsdCents / 100) * rate,
     requiredAvgFloatMin: required.min,
@@ -382,7 +382,7 @@ export async function getCollectionOutcomeMenu(collectionTag) {
 
     const toOutcomes = (outputs) =>
       outputs.map((o) => ({
-        name: `${o.weapon} | ${o.skin}`,
+        name: `${o.weapon} | ${o.skin}${o.stattrak ? " (StatTrak™)" : ""}`,
         prob: 100 / outputs.length,
         price: (o.avgUsdCents / 100) * rate,
         minListings: o.minListings,
@@ -412,7 +412,7 @@ export async function getCollectionOutcomeMenu(collectionTag) {
         band.max
       );
       return {
-        name: `${best.skin.weapon} | ${best.skin.skin}`,
+        name: `${best.skin.weapon} | ${best.skin.skin}${best.skin.stattrak ? " (StatTrak™)" : ""}`,
         wear: best.wear.exterior,
         price: (best.wear.priceUsdCents / 100) * rate,
         requiredAvgFloatMin: required.min,
@@ -440,7 +440,7 @@ export async function getCollectionOutcomeMenu(collectionTag) {
             .map((o) => {
               const predicted = predictOutcomePrice(o, assumedAvgFloat, rate);
               return {
-                name: `${o.weapon} | ${o.skin}`,
+                name: `${o.weapon} | ${o.skin}${o.stattrak ? " (StatTrak™)" : ""}`,
                 prob: 100 / outputSkins.length,
                 price: predicted.price,
                 predictedWear: predicted.wear,
