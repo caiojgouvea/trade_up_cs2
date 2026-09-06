@@ -1,0 +1,13 @@
+{
+  "name": "trade-up-cs2-backend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --no-warnings --watch src/server.js",
+    "start": "node --no-warnings src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
