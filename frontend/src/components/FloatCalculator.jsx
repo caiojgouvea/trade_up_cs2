@@ -15,7 +15,28 @@ function bestBandIndex(outcome) {
   );
 }
 
-export default function FloatCalculator({ outcomes, defaultOutcomeName, inputFloatRange }) {
+// Recebe `legs` — uma ou mais "pernas" de entrada, cada uma com sua própria
+// contagem e faixa de float (útil pro trade-up manipulado, que mistura duas
+// skins diferentes). Se só vier `inputFloatRange` (uso antigo, uma skin só
+// repetida 10x), monta uma única perna de 10 com aquela faixa.
+export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, inputFloatRange }) {
+  const resolvedLegs = useMemo(() => {
+    if (legs?.length) return legs;
+    return [{ count: SLOTS, floatRange: inputFloatRange, label: null }];
+  }, [legs, inputFloatRange]);
+
+  const totalSlots = resolvedLegs.reduce((s, l) => s + l.count, 0);
+
+  // "slots" achata as pernas numa lista de SLOT->perna, pra saber com qual
+  // faixa de float normalizar cada campo digitado.
+  const slotLegs = useMemo(() => {
+    const arr = [];
+    resolvedLegs.forEach((leg, legIdx) => {
+      for (let i = 0; i < leg.count; i++) arr.push(legIdx);
+    });
+    return arr;
+  }, [resolvedLegs]);
+
   const candidateOutcomes = useMemo(
     () => outcomes.filter((o) => o.floatRange && o.wearPrices?.length),
     [outcomes]
@@ -32,7 +53,7 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, inputFlo
   const band = target?.wearPrices[bandIdx] ?? target?.wearPrices[0];
 
   const [showInfo, setShowInfo] = useState(false);
-  const [floats, setFloats] = useState(Array(SLOTS).fill(""));
+  const [floats, setFloats] = useState(() => Array(totalSlots).fill(""));
 
   if (!candidateOutcomes.length) {
     return (
@@ -53,29 +74,30 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, inputFlo
     setFloats(next);
   }
 
-  // O float que a fórmula de trade-up usa é a posição RELATIVA (0–1) dentro
-  // da faixa própria da skin de ENTRADA, não o float bruto que você vê no
-  // inspect link. Sem essa faixa, a conta fica errada pra qualquer skin cujo
-  // min/max não seja 0–1 inteiro (a maioria não é) — foi exatamente esse bug
-  // que causou um "10x Factory New" virar Minimal Wear na prática.
-  const hasInputRange = !!inputFloatRange;
-  const inMin = inputFloatRange?.min ?? 0;
-  const inMax = inputFloatRange?.max ?? 1;
+  function legRange(legIdx) {
+    const r = resolvedLegs[legIdx]?.floatRange;
+    return { min: r?.min ?? 0, max: r?.max ?? 1, has: !!r };
+  }
 
   const parsed = floats.map((f) => (f.trim() === "" ? null : Number(f)));
-  const filled = parsed.filter((v) => v != null && !isNaN(v));
-  const filledCount = filled.length;
-  const remaining = SLOTS - filledCount;
-  const sumFilled = filled.reduce((s, v) => s + v, 0);
-  const avgFilled = filledCount > 0 ? sumFilled / filledCount : null;
-  const adjustedFilled = filled.map((v) => normalizeFloat(v, inMin, inMax));
-  const sumAdjustedFilled = adjustedFilled.reduce((s, v) => s + v, 0);
+  const adjusted = parsed.map((v, i) => {
+    if (v == null || isNaN(v)) return null;
+    const r = legRange(slotLegs[i]);
+    return normalizeFloat(v, r.min, r.max);
+  });
+  const filledCount = adjusted.filter((v) => v != null).length;
+  const remaining = totalSlots - filledCount;
+  const sumAdjustedFilled = adjusted.reduce((s, v) => s + (v ?? 0), 0);
+  const rawFilled = parsed.filter((v) => v != null && !isNaN(v));
+  const avgRawFilled = rawFilled.length ? rawFilled.reduce((s, v) => s + v, 0) / rawFilled.length : null;
+
+  const anyMissingRange = resolvedLegs.some((l) => !l.floatRange);
 
   let resultBlock = null;
 
   if (target && band) {
     if (remaining === 0) {
-      const avgAdjusted = sumAdjustedFilled / SLOTS;
+      const avgAdjusted = sumAdjustedFilled / totalSlots;
       const outFloat = outputFloatFromAvg(avgAdjusted, target.floatRange.min, target.floatRange.max);
       const resultBand = findBand(target.wearPrices, outFloat);
       const hitTarget = resultBand?.name === band.name;
@@ -87,16 +109,8 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, inputFlo
             color: hitTarget ? COLORS.green : COLORS.rust,
           }}
         >
-          Float médio de entrada: <strong>{fmtFloat(avgFilled)}</strong>
-          {hasInputRange && (
-            <>
-              {" "}
-              (posição relativa <strong>{fmtFloat(avgAdjusted)}</strong> dentro da faixa {fmtFloat(inMin)}–
-              {fmtFloat(inMax)} dessa skin de entrada)
-            </>
-          )}{" "}
-          → float de saída previsto: <strong>{fmtFloat(outFloat)}</strong> (
-          {resultBand?.name ?? "fora de qualquer faixa conhecida"})
+          Float médio relativo de entrada: <strong>{fmtFloat(avgAdjusted)}</strong> → float de saída
+          previsto: <strong>{fmtFloat(outFloat)}</strong> ({resultBand?.name ?? "fora de qualquer faixa conhecida"})
           {resultBand?.price != null && <> · {fmtBRL(resultBand.price)}</>}
           {" — "}
           {hitTarget ? "bate com o alvo escolhido." : `não bate com o alvo (${band.name}).`}
@@ -109,51 +123,69 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, inputFlo
         band.min,
         band.max
       );
-      const requiredAdjustedSumMin = required.min * SLOTS - sumAdjustedFilled;
-      const requiredAdjustedSumMax = required.max * SLOTS - sumAdjustedFilled;
+      const requiredAdjustedSumMin = required.min * totalSlots - sumAdjustedFilled;
+      const requiredAdjustedSumMax = required.max * totalSlots - sumAdjustedFilled;
       const perRemainingAdjustedMin = requiredAdjustedSumMin / remaining;
       const perRemainingAdjustedMax = requiredAdjustedSumMax / remaining;
       const clampedAdjustedMin = Math.max(0, Math.min(1, perRemainingAdjustedMin));
       const clampedAdjustedMax = Math.max(0, Math.min(1, perRemainingAdjustedMax));
       const impossible = perRemainingAdjustedMax < 0 || perRemainingAdjustedMin > 1;
 
-      // Mostra em float BRUTO (o que dá pra conferir num inspect link real),
-      // convertendo de volta da posição relativa pra faixa da skin de entrada.
-      const clampedRawMin = denormalizeFloat(clampedAdjustedMin, inMin, inMax);
-      const clampedRawMax = denormalizeFloat(clampedAdjustedMax, inMin, inMax);
+      // Quantos slots vazios existem em cada perna (pra mostrar o alvo em
+      // float BRUTO — cada perna converte diferente, já que tem sua própria
+      // faixa de float).
+      const emptyByLeg = new Map();
+      floats.forEach((f, i) => {
+        if (f.trim() !== "" && !isNaN(Number(f))) return;
+        const legIdx = slotLegs[i];
+        emptyByLeg.set(legIdx, (emptyByLeg.get(legIdx) ?? 0) + 1);
+      });
+      const emptyLegEntries = [...emptyByLeg.entries()];
 
       resultBlock = (
         <div style={{ marginTop: 8, fontSize: 11, color: impossible ? COLORS.rust : COLORS.text }}>
           {filledCount > 0 && (
             <div style={{ color: COLORS.textDim, marginBottom: 4 }}>
-              Float médio dos {filledCount} preenchido(s): <strong>{fmtFloat(avgFilled)}</strong>{" "}
-              (soma até agora: {fmtFloat(sumFilled)})
+              Float bruto médio dos {filledCount} preenchido(s): <strong>{fmtFloat(avgRawFilled)}</strong>{" "}
+              (média relativa considerando a faixa de cada perna: {fmtFloat(sumAdjustedFilled / (filledCount || 1))})
             </div>
           )}
-          {!hasInputRange && (
+          {anyMissingRange && (
             <div style={{ color: COLORS.gold, marginBottom: 4 }}>
-              Sem dado de float da skin de entrada — assumindo faixa 0–1 (pode estar errado se essa
-              skin não cobrir a faixa toda).
+              Uma ou mais pernas não têm dado de float — assumindo faixa 0–1 pra elas (pode estar
+              errado se essa skin não cobrir a faixa toda).
             </div>
           )}
           {impossible ? (
             <>
               Com os {filledCount} float(s) já preenchidos, não tem como as {remaining} restantes
-              (float entre {fmtFloat(inMin)} e {fmtFloat(inMax)} pra essa skin) puxarem a média pra
-              faixa de <strong>{band.name}</strong>.
-            </>
-          ) : remaining === 1 ? (
-            <>
-              Falta <strong>1</strong>. Pra fechar em <strong>{band.name}</strong>, essa última
-              precisa ter float até <strong>{fmtFloat(clampedRawMax)}</strong>
-              {clampedAdjustedMin > 0 && <> (e no mínimo {fmtFloat(clampedRawMin)})</>}.
+              puxarem a média pra faixa de <strong>{band.name}</strong>.
             </>
           ) : (
             <>
-              Faltam <strong>{remaining}</strong>. Pra fechar em <strong>{band.name}</strong>, dá
-              pra usar float até <strong>{fmtFloat(clampedRawMax)}</strong> em cada uma das que faltam
-              {clampedAdjustedMin > 0 && <> (mínimo {fmtFloat(clampedRawMin)} cada)</>} — pode
-              misturar valores diferentes, contanto que a média delas não passe disso.
+              Faltam <strong>{remaining}</strong>. Pra fechar em <strong>{band.name}</strong>:
+              <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                {emptyLegEntries.map(([legIdx, count]) => {
+                  const r = legRange(legIdx);
+                  const rawMax = denormalizeFloat(clampedAdjustedMax, r.min, r.max);
+                  const rawMin = denormalizeFloat(clampedAdjustedMin, r.min, r.max);
+                  const leg = resolvedLegs[legIdx];
+                  return (
+                    <li key={legIdx}>
+                      {leg.label ? <strong>{leg.label}</strong> : "entrada"} — {count}{" "}
+                      restante{count > 1 ? "s" : ""}: float até <strong>{fmtFloat(rawMax)}</strong>
+                      {clampedAdjustedMin > 0 && <> (mínimo {fmtFloat(rawMin)})</>} cada
+                    </li>
+                  );
+                })}
+              </ul>
+              {emptyLegEntries.length > 1 && (
+                <div style={{ marginTop: 4, color: COLORS.textDim }}>
+                  Os limites acima assumem que a média entre as pernas restantes fica equilibrada —
+                  dá pra compensar um item mais gasto numa perna com outro mais novo na mesma ou
+                  outra perna, contanto que a média relativa geral não passe do alvo.
+                </div>
+              )}
             </>
           )}
         </div>
@@ -228,16 +260,9 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, inputFlo
             O float vai de 0 a 1 e define o desgaste visual da arma: quanto mais baixo, mais nova
             (Factory New); quanto mais alto, mais gasta (Battle-Scarred). Cada skin tem seu próprio
             min/max — por isso as faixas abaixo são específicas de <strong>{target?.name}</strong>,
-            não as faixas padrão do jogo.
+            não as faixas padrão do jogo. O que entra na média não é o float bruto, é a posição
+            relativa dele dentro da faixa própria de cada skin de entrada.
           </div>
-          {hasInputRange && (
-            <div style={{ marginBottom: 6 }}>
-              A skin de entrada que você compraria tem faixa própria <strong>{fmtFloat(inMin)}–
-              {fmtFloat(inMax)}</strong>: digite o float bruto de cada item (o número real do inspect
-              link) — a calculadora converte pra posição relativa dentro dessa faixa antes de
-              calcular a média, porque é assim que o jogo calcula, não com o float bruto direto.
-            </div>
-          )}
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
@@ -261,23 +286,40 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, inputFlo
         </div>
       )}
 
-      <div style={{ fontSize: 10, color: COLORS.textDim, marginBottom: 4 }}>
-        Floats brutos (do inspect link) dos itens de entrada que você já tem/pretende comprar
-        {hasInputRange && <> — faixa dessa skin: {fmtFloat(inMin)}–{fmtFloat(inMax)}</>} (deixe em
-        branco o que não souber):
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
-        {floats.map((f, i) => (
-          <input
-            key={i}
-            className="tuc-input"
-            style={{ fontSize: 11, padding: "5px 6px" }}
-            placeholder={`#${i + 1}`}
-            value={f}
-            onChange={(e) => updateFloat(i, e.target.value)}
-          />
-        ))}
-      </div>
+      {resolvedLegs.map((leg, legIdx) => {
+        const start = resolvedLegs.slice(0, legIdx).reduce((s, l) => s + l.count, 0);
+        const r = legRange(legIdx);
+        return (
+          <div key={legIdx} style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 10, color: COLORS.textDim, marginBottom: 4 }}>
+              {leg.label ? (
+                <>
+                  <strong style={{ color: COLORS.text }}>{leg.label}</strong> — floats brutos (do
+                  inspect link) {r.has && <>— faixa dessa skin: {fmtFloat(r.min)}–{fmtFloat(r.max)}</>}
+                </>
+              ) : (
+                <>
+                  Floats brutos (do inspect link) dos itens de entrada
+                  {r.has && <> — faixa dessa skin: {fmtFloat(r.min)}–{fmtFloat(r.max)}</>}
+                </>
+              )}{" "}
+              (deixe em branco o que não souber):
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
+              {Array.from({ length: leg.count }).map((_, i) => (
+                <input
+                  key={i}
+                  className="tuc-input"
+                  style={{ fontSize: 11, padding: "5px 6px" }}
+                  placeholder={`#${i + 1}`}
+                  value={floats[start + i]}
+                  onChange={(e) => updateFloat(start + i, e.target.value)}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
 
       {resultBlock}
     </div>

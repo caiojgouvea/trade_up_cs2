@@ -560,6 +560,7 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
               count: mix.countA,
               unitPriceBrl: (mix.a.wear.priceUsdCents / 100) * rate,
               iconUrl: mix.a.skin.iconUrl,
+              floatRange: mix.a.skin.floatRange,
               marketHashName: marketHashName({
                 weapon: mix.a.skin.weapon,
                 skin: mix.a.skin.skin,
@@ -573,6 +574,7 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
               count: mix.countB,
               unitPriceBrl: (mix.b.wear.priceUsdCents / 100) * rate,
               iconUrl: mix.b.skin.iconUrl,
+              floatRange: mix.b.skin.floatRange,
               marketHashName: marketHashName({
                 weapon: mix.b.skin.weapon,
                 skin: mix.b.skin.skin,

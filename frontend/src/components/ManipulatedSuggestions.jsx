@@ -6,6 +6,7 @@ import { rarityColor } from "../lib/rarity";
 import { loadFavoriteManipulated, saveFavoriteManipulated, manipulatedKey } from "../lib/favorites";
 import { getManipulatedSuggestions } from "../lib/api";
 import ItemThumb from "./ItemThumb";
+import FloatCalculator from "./FloatCalculator";
 
 function steamMarketUrl(marketHashName) {
   return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketHashName)}`;
@@ -32,6 +33,7 @@ export default function ManipulatedSuggestions() {
   const [textFilter, setTextFilter] = useState("");
   const [sort, setSort] = useState({ key: "stats.roi", dir: "desc" });
   const [expandedIdx, setExpandedIdx] = useState(null);
+  const [calcOpenIdx, setCalcOpenIdx] = useState(null);
   const [favorites, setFavorites] = useState(() => loadFavoriteManipulated());
 
   function toggleFavorite(key) {
@@ -438,6 +440,26 @@ export default function ManipulatedSuggestions() {
                                   </a>
                                 ))}
                               </div>
+                              <button
+                                className="tuc-btn-ghost"
+                                style={{ fontSize: 10, padding: "4px 8px", marginBottom: 8 }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCalcOpenIdx(calcOpenIdx === idx ? null : idx);
+                                }}
+                              >
+                                {calcOpenIdx === idx ? "Fechar calculadora de float" : "Calculadora de float"}
+                              </button>
+                              {calcOpenIdx === idx && (
+                                <FloatCalculator
+                                  outcomes={s.outcomes}
+                                  legs={s.legs.map((l) => ({
+                                    count: l.count,
+                                    floatRange: l.floatRange,
+                                    label: `${l.count}x ${l.skinName} (${l.wear})`,
+                                  }))}
+                                />
+                              )}
                               {s.outcomes.map((o, i) => (
                                 <div
                                   key={i}
