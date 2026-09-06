@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { RotateCcw, RefreshCw, Search } from "lucide-react";
+import { RotateCcw, RefreshCw, Search, Star } from "lucide-react";
 import { COLORS } from "../lib/colors";
 import { fmtBRL, fmtFloat, computeStats } from "../lib/tradeUpMath";
+import { loadFavorites, saveFavorites } from "../lib/favorites";
 import ItemThumb from "./ItemThumb";
 import {
   getCollections,
@@ -27,6 +28,16 @@ export default function CollectionsExplorer() {
   const [sort, setSort] = useState({ key: "priceBrlEstimate", dir: "desc" });
   const [exactLoadingHash, setExactLoadingHash] = useState(null);
   const [error, setError] = useState("");
+  const [favorites, setFavorites] = useState(() => loadFavorites());
+
+  function toggleFavorite(hash) {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      next.has(hash) ? next.delete(hash) : next.add(hash);
+      saveFavorites(next);
+      return next;
+    });
+  }
 
   useEffect(() => {
     loadCollections();
@@ -138,6 +149,10 @@ export default function CollectionsExplorer() {
     }
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...rows].sort((a, b) => {
+      const aFav = favorites.has(a.market_hash_name);
+      const bFav = favorites.has(b.market_hash_name);
+      if (aFav !== bFav) return aFav ? -1 : 1;
+
       const av = a[sort.key];
       const bv = b[sort.key];
       if (av == null && bv == null) return 0;
@@ -146,7 +161,7 @@ export default function CollectionsExplorer() {
       if (typeof av === "string") return dir * av.localeCompare(bv);
       return dir * (av - bv);
     });
-  }, [items, itemFilter, sort]);
+  }, [items, itemFilter, sort, favorites]);
 
   const selectedCollection = collections.find((c) => c.tag === selectedTag);
 
@@ -373,6 +388,7 @@ export default function CollectionsExplorer() {
                       <thead>
                         <tr>
                           <th></th>
+                          <th></th>
                           <th style={{ cursor: "pointer" }} onClick={() => toggleSort("weapon")}>Arma</th>
                           <th style={{ cursor: "pointer" }} onClick={() => toggleSort("skin")}>Skin</th>
                           <th>Exterior</th>
@@ -392,6 +408,16 @@ export default function CollectionsExplorer() {
                           const preview = tradeUpPreview(it);
                           return (
                           <tr key={it.market_hash_name}>
+                            <td>
+                              <button
+                                className="tuc-icon-btn"
+                                onClick={() => toggleFavorite(it.market_hash_name)}
+                                aria-label="Favoritar"
+                                style={{ color: favorites.has(it.market_hash_name) ? COLORS.gold : COLORS.textDim }}
+                              >
+                                <Star size={15} fill={favorites.has(it.market_hash_name) ? COLORS.gold : "none"} />
+                              </button>
+                            </td>
                             <td>
                               <ItemThumb iconUrl={it.icon_url} rarity={it.rarity} size={32} />
                             </td>
