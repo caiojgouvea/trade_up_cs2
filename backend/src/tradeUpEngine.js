@@ -92,8 +92,9 @@ function bandForFloat(skinGroup, floatValue) {
 // item) — serve pra montar um link direto pra página certa, eliminando
 // qualquer ambiguidade sobre qual wear comprar (crítico pro trade-up
 // manipulado: comprar o wear errado destrói a mistura calculada).
-function marketHashName({ weapon, skin, exterior, stattrak }) {
-  return `${stattrak ? "StatTrak™ " : ""}${weapon} | ${skin} (${exterior})`;
+function marketHashName({ weapon, skin, exterior, stattrak, souvenir }) {
+  const prefix = souvenir ? "Souvenir " : stattrak ? "StatTrak™ " : "";
+  return `${prefix}${weapon} | ${skin} (${exterior})`;
 }
 
 function priceForWear(skinGroup, exterior) {
@@ -317,14 +318,64 @@ async function buildInputMenu(minListings) {
     byRarity.get(s.rarity)[st].push(s);
   }
 
-  return { rate, menu, collectionNames };
+  // Itens Lembrança podem ser usados como MATERIAL de entrada num contrato
+  // normal desde a atualização de trade-up de 2026 — dá pra misturar
+  // Lembrança com item normal no mesmo contrato de 10, e a saída sempre vira
+  // um item normal (nunca Lembrança, nunca StatTrak — StatTrak e Lembrança
+  // são mutuamente exclusivos, então isso só entra no lado Normal). Como
+  // Lembrança costuma ser mais barata que a versão normal da mesma skin,
+  // isso abre material de entrada mais barato pro contrato normal.
+  const souvenirRows = db
+    .prepare(
+      `SELECT collection_tag, rarity, stattrak, weapon, skin, exterior, icon_url, price_usd_cents, sell_listings
+       FROM items
+       WHERE commodity = 0
+         AND exterior IS NOT NULL
+         AND special = 0
+         AND souvenir = 1
+         AND rarity IS NOT NULL
+         AND price_usd_cents IS NOT NULL
+         AND ${REAL_COLLECTION_FILTER}`
+    )
+    .all()
+    .filter((r) => (r.sell_listings ?? 0) >= minListings);
+
+  const souvenirSkins = groupIntoSkins(souvenirRows, floatMap).filter((s) => s.avgUsdCents != null);
+
+  // souvenirMenu[collectionTag][rarity] = [skins...] (só existe versão
+  // normal de Lembrança, não tem eixo StatTrak aqui)
+  const souvenirMenu = new Map();
+  for (const s of souvenirSkins) {
+    if (!souvenirMenu.has(s.collectionTag)) souvenirMenu.set(s.collectionTag, new Map());
+    const byRarity = souvenirMenu.get(s.collectionTag);
+    if (!byRarity.has(s.rarity)) byRarity.set(s.rarity, []);
+    byRarity.get(s.rarity).push(s);
+  }
+
+  return { rate, menu, souvenirMenu, collectionNames };
+}
+
+// Unidades de material Lembrança pra uma coleção/raridade (só faz sentido
+// pro lado Normal — ver comentário acima). Cada wear vira uma unidade
+// comprável marcada isSouvenir, do mesmo jeito que as unidades normais.
+function souvenirInputUnits(souvenirMenu, collectionTag, tier) {
+  const skins = souvenirMenu.get(collectionTag)?.get(tier);
+  if (!skins?.length) return [];
+  const units = [];
+  for (const s of skins) {
+    for (const w of s.wears) {
+      if (w.priceUsdCents == null) continue;
+      units.push({ skin: s, wear: w, isSouvenir: true });
+    }
+  }
+  return units;
 }
 
 // Gera sugestões de trade-up de UMA coleção só (o tipo clássico: 10 skins da
 // mesma coleção e raridade). Trade-ups misturando coleções ficam pra uma
 // próxima etapa (o espaço de busca cresce muito mais).
 export async function computeSingleCollectionSuggestions({ minListings = 10 } = {}) {
-  const { rate, menu, collectionNames } = await buildInputMenu(minListings);
+  const { rate, menu, souvenirMenu, collectionNames } = await buildInputMenu(minListings);
 
   const suggestions = [];
 
@@ -334,22 +385,29 @@ export async function computeSingleCollectionSuggestions({ minListings = 10 } = 
       const nextTier = RARITY_ORDER[i + 1];
       const tierMenu = byRarity.get(tier);
       const nextMenu = byRarity.get(nextTier);
-      if (!tierMenu || !nextMenu) continue;
+      if (!nextMenu) continue;
 
       for (const stattrak of [0, 1]) {
-        const inputs = tierMenu[stattrak];
+        const inputs = tierMenu?.[stattrak];
         const outputs = nextMenu[stattrak];
-        if (!inputs?.length || !outputs?.length) continue;
+        if (!outputs?.length) continue;
 
         // Unidades realmente compráveis: cada skin+wear específico com
         // preço, não a média da skin (você não compra "a média"). Já vêm só
         // com liquidez suficiente, porque `rows` já foi filtrado acima.
         const inputUnits = [];
-        for (const s of inputs) {
+        for (const s of inputs ?? []) {
           for (const w of s.wears) {
             if (w.priceUsdCents == null) continue;
             inputUnits.push({ skin: s, wear: w });
           }
+        }
+        // Lembrança só entra no lado Normal (StatTrak e Lembrança são
+        // mutuamente exclusivos no jogo) — mas conta como material tão
+        // válido quanto o normal, então entra na mesma lista de opções pra
+        // achar a entrada mais barata.
+        if (stattrak === 0) {
+          inputUnits.push(...souvenirInputUnits(souvenirMenu, collectionTag, tier));
         }
         if (!inputUnits.length) continue;
 
@@ -397,6 +455,18 @@ export async function computeSingleCollectionSuggestions({ minListings = 10 } = 
           inputWear: cheapestUnit.wear.exterior,
           inputIconUrl: cheapestUnit.skin.iconUrl,
           inputListings: cheapestUnit.wear.sellListings,
+          // Lembrança é mais barata que a versão normal na maioria das vezes
+          // — se a entrada mais barata achada foi uma, o usuário precisa
+          // saber (a página de compra é outra: "Souvenir Arma | Skin (...)",
+          // não a normal).
+          inputIsSouvenir: !!cheapestUnit.isSouvenir,
+          inputMarketHashName: marketHashName({
+            weapon: cheapestUnit.skin.weapon,
+            skin: cheapestUnit.skin.skin,
+            exterior: cheapestUnit.wear.exterior,
+            stattrak: !!stattrak,
+            souvenir: !!cheapestUnit.isSouvenir,
+          }),
           // Faixa de float PRÓPRIA dessa skin de entrada — a calculadora de
           // float no front precisa disso pra normalizar os floats brutos que
           // o usuário digita (ver normalizeFloat em floatMath.js). Sem isso
@@ -499,7 +569,7 @@ function bestManipulatedMix(inputUnits, outputs, rate) {
 // (a maioria das coleções não ganha nada misturando — o sinal fica só nos
 // casos em que realmente compensa).
 export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
-  const { rate, menu, collectionNames } = await buildInputMenu(minListings);
+  const { rate, menu, souvenirMenu, collectionNames } = await buildInputMenu(minListings);
 
   const suggestions = [];
 
@@ -509,19 +579,24 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
       const nextTier = RARITY_ORDER[i + 1];
       const tierMenu = byRarity.get(tier);
       const nextMenu = byRarity.get(nextTier);
-      if (!tierMenu || !nextMenu) continue;
+      if (!nextMenu) continue;
 
       for (const stattrak of [0, 1]) {
-        const inputs = tierMenu[stattrak];
+        const inputs = tierMenu?.[stattrak];
         const outputs = nextMenu[stattrak];
-        if (!inputs?.length || !outputs?.length) continue;
+        if (!outputs?.length) continue;
 
         const inputUnits = [];
-        for (const s of inputs) {
+        for (const s of inputs ?? []) {
           for (const w of s.wears) {
             if (w.priceUsdCents == null) continue;
             inputUnits.push({ skin: s, wear: w });
           }
+        }
+        // Lembrança pode ser uma das duas pernas da mistura também (mesma
+        // regra do lado uniforme: só entra no Normal, nunca StatTrak).
+        if (stattrak === 0) {
+          inputUnits.push(...souvenirInputUnits(souvenirMenu, collectionTag, tier));
         }
         if (inputUnits.length < 2) continue;
 
@@ -561,11 +636,13 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
               unitPriceBrl: (mix.a.wear.priceUsdCents / 100) * rate,
               iconUrl: mix.a.skin.iconUrl,
               floatRange: mix.a.skin.floatRange,
+              isSouvenir: !!mix.a.isSouvenir,
               marketHashName: marketHashName({
                 weapon: mix.a.skin.weapon,
                 skin: mix.a.skin.skin,
                 exterior: mix.a.wear.exterior,
                 stattrak: !!stattrak,
+                souvenir: !!mix.a.isSouvenir,
               }),
             },
             {
@@ -575,11 +652,13 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
               unitPriceBrl: (mix.b.wear.priceUsdCents / 100) * rate,
               iconUrl: mix.b.skin.iconUrl,
               floatRange: mix.b.skin.floatRange,
+              isSouvenir: !!mix.b.isSouvenir,
               marketHashName: marketHashName({
                 weapon: mix.b.skin.weapon,
                 skin: mix.b.skin.skin,
                 exterior: mix.b.wear.exterior,
                 stattrak: !!stattrak,
+                souvenir: !!mix.b.isSouvenir,
               }),
             },
           ],

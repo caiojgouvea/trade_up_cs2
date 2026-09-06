@@ -299,8 +299,8 @@ export default function ManipulatedSuggestions() {
                                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                   <ItemThumb iconUrl={l.iconUrl} rarity={s.tier} size={22} />
                                   <span>
-                                    {l.count}x {l.skinName}{" "}
-                                    <span style={{ color: COLORS.textDim }}>({l.wear})</span>
+                                    {l.count}x {l.isSouvenir && <span style={{ color: COLORS.gold }}>Lembrança </span>}
+                                    {l.skinName} <span style={{ color: COLORS.textDim }}>({l.wear})</span>
                                   </span>
                                   <a
                                     href={steamMarketUrl(l.marketHashName)}
@@ -395,7 +395,7 @@ export default function ManipulatedSuggestions() {
                                 {s.outcomeCount} de chance cada)
                               </div>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 10 }}>
-                                Mistura: {s.legs.map((l) => `${l.count}x ${l.skinName} (${l.wear})`).join(" + ")}{" "}
+                                Mistura: {s.legs.map((l) => `${l.count}x ${l.isSouvenir ? "Lembrança " : ""}${l.skinName} (${l.wear})`).join(" + ")}{" "}
                                 → float médio assumido ~{fmtFloat(s.assumedAvgFloat)} (meio da faixa de
                                 cada wear escolhido — não é o float exato de cada anúncio). Custo de{" "}
                                 {fmtBRL(s.cost)} contra {fmtBRL(s.baselineCost)} da estratégia uniforme
@@ -435,7 +435,8 @@ export default function ManipulatedSuggestions() {
                                     }}
                                   >
                                     <ItemThumb iconUrl={l.iconUrl} rarity={s.tier} size={22} />
-                                    {l.count}x {l.skinName} ({l.wear}) — {fmtBRL(l.unitPriceBrl)} cada
+                                    {l.count}x {l.isSouvenir && "Lembrança "}
+                                    {l.skinName} ({l.wear}) — {fmtBRL(l.unitPriceBrl)} cada
                                     <ExternalLink size={12} />
                                   </a>
                                 ))}
@@ -456,7 +457,7 @@ export default function ManipulatedSuggestions() {
                                   legs={s.legs.map((l) => ({
                                     count: l.count,
                                     floatRange: l.floatRange,
-                                    label: `${l.count}x ${l.skinName} (${l.wear})`,
+                                    label: `${l.count}x ${l.isSouvenir ? "Lembrança " : ""}${l.skinName} (${l.wear})`,
                                   }))}
                                 />
                               )}

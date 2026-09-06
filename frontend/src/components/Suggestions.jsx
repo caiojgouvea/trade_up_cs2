@@ -11,7 +11,7 @@ import {
   Cell,
   ReferenceLine,
 } from "recharts";
-import { RefreshCw, ChevronDown, ChevronUp, Check, X, Star } from "lucide-react";
+import { RefreshCw, ChevronDown, ChevronUp, Check, X, Star, ExternalLink } from "lucide-react";
 import { COLORS } from "../lib/colors";
 import { fmtBRL, fmtFloat } from "../lib/tradeUpMath";
 import { rarityColor } from "../lib/rarity";
@@ -20,6 +20,10 @@ import { getSuggestions, syncAllCollections, getSyncAllStatus } from "../lib/api
 import SuggestionsTooltip from "./SuggestionsTooltip";
 import ItemThumb from "./ItemThumb";
 import FloatCalculator from "./FloatCalculator";
+
+function steamMarketUrl(marketHashName) {
+  return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketHashName)}`;
+}
 
 function wearLabel(o) {
   if (!o.predictedWear) return "média entre wears";
@@ -412,10 +416,25 @@ export default function Suggestions() {
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               <ItemThumb iconUrl={s.inputIconUrl} rarity={s.tier} size={28} />
                               <span>
+                                {s.inputIsSouvenir && (
+                                  <span style={{ color: COLORS.gold }}>Lembrança </span>
+                                )}
                                 {s.inputSkin}
                                 {s.stattrak && <span style={{ color: COLORS.gold }}> (StatTrak™)</span>}
                                 {s.inputWear && (
                                   <span style={{ color: COLORS.textDim }}> ({s.inputWear})</span>
+                                )}
+                                {s.inputMarketHashName && (
+                                  <a
+                                    href={steamMarketUrl(s.inputMarketHashName)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{ color: COLORS.gold, marginLeft: 6, display: "inline-flex", verticalAlign: "middle" }}
+                                    title="Abrir no mercado (página exata desse item)"
+                                  >
+                                    <ExternalLink size={11} />
+                                  </a>
                                 )}
                               </span>
                             </div>
