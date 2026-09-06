@@ -35,3 +35,16 @@ export function saveFavoriteSuggestions(set) {
 export function suggestionKey(s) {
   return `${s.collectionTag}|${s.tier}|${s.nextTier}|${s.stattrak}`;
 }
+
+export function loadFavoriteManipulated() {
+  return loadSet("trade-up-favorite-manipulated");
+}
+
+export function saveFavoriteManipulated(set) {
+  saveSet("trade-up-favorite-manipulated", set);
+}
+
+export function manipulatedKey(s) {
+  const legs = s.legs.map((l) => `${l.skinName}|${l.wear}|${l.count}`).join(",");
+  return `${s.collectionTag}|${s.tier}|${s.nextTier}|${s.stattrak}|${legs}`;
+}

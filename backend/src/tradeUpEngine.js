@@ -232,9 +232,9 @@ function computeFloatGuidance({ cheapestInput, outputs, rate }) {
 // sentido pra coleções que seguem o nome padrão oficial.
 const REAL_COLLECTION_FILTER = "collection_tag IN (SELECT tag FROM collections WHERE name LIKE 'The % Collection')";
 
-// Gera sugestões de trade-up de UMA coleção só (o tipo clássico: 10 skins da
-// mesma coleção e raridade). Trade-ups misturando coleções ficam pra uma
-// próxima etapa (o espaço de busca cresce muito mais).
+// Monta o menu compartilhado por computeSingleCollectionSuggestions e
+// computeManipulatedSuggestions: pra cada coleção/raridade/stattrak, as
+// skins disponíveis (já agrupadas por wear) com liquidez suficiente.
 //
 // minListings é um piso RÍGIDO, não uma preferência: um wear com menos
 // anúncios ativos que isso não entra na conta nem como entrada nem como
@@ -243,7 +243,7 @@ const REAL_COLLECTION_FILTER = "collection_tag IN (SELECT tag FROM collections W
 // pouquíssimos anúncios o "menor preço" do Steam não é confiável (pode ser
 // um vendedor patinho fora da curva), e ROIs de centenas de % baseados
 // nisso já apareceram na prática usando só 2 anúncios.
-export async function computeSingleCollectionSuggestions({ minListings = 10 } = {}) {
+async function buildInputMenu(minListings) {
   const rate = await getUsdToBrlRate(db);
   const floatMap = getFloatRangeMap();
 
@@ -278,6 +278,15 @@ export async function computeSingleCollectionSuggestions({ minListings = 10 } = 
     if (!byRarity.has(s.rarity)) byRarity.set(s.rarity, { 0: [], 1: [] });
     byRarity.get(s.rarity)[st].push(s);
   }
+
+  return { rate, menu, collectionNames };
+}
+
+// Gera sugestões de trade-up de UMA coleção só (o tipo clássico: 10 skins da
+// mesma coleção e raridade). Trade-ups misturando coleções ficam pra uma
+// próxima etapa (o espaço de busca cresce muito mais).
+export async function computeSingleCollectionSuggestions({ minListings = 10 } = {}) {
+  const { rate, menu, collectionNames } = await buildInputMenu(minListings);
 
   const suggestions = [];
 
@@ -361,6 +370,178 @@ export async function computeSingleCollectionSuggestions({ minListings = 10 } = 
           outcomes,
           stats,
           floatInfo,
+        });
+      }
+    }
+  }
+
+  suggestions.sort((a, b) => b.stats.roi - a.stats.roi);
+  return { rate, suggestions };
+}
+
+// Float médio (meio da faixa de wear) de uma unidade compráveis específica
+// (skin+wear). Usa a mesma aproximação já usada no resto do arquivo — não
+// conhecemos o float exato de cada anúncio, só a faixa do wear.
+function unitFloatMid(unit) {
+  if (!unit.skin.floatRange) return null;
+  const band = bandForWear(unit.skin, unit.wear.exterior);
+  return band ? (band.min + band.max) / 2 : null;
+}
+
+// O "trade-up manipulado": em vez de comprar 10 unidades idênticas (a
+// entrada mais barata disponível), mistura DUAS unidades diferentes — podem
+// ser dois wears da mesma skin, ou skins diferentes da mesma
+// raridade/coleção/stattrak — pra pilotar o float médio de entrada pra uma
+// faixa mais barata de atingir do que qualquer skin/wear sozinho permite.
+// O float de saída é determinístico (não sorteado), então empurrar o float
+// médio pra cima ou pra baixo muda exatamente qual wear cada saída possível
+// vai ter — e às vezes um wear mais barato de mirar custa bem menos que
+// comprar 10 cópias do próprio input mais barato.
+//
+// Só considera misturas de até 2 unidades distintas: minimizar custo sujeito
+// a "média de float = alvo" e "soma de unidades = 10" é um problema linear
+// com 2 restrições, cujo ótimo contínuo sempre usa no máximo 2 variáveis
+// básicas — misturar um 3º tipo nunca compensa. As contagens são inteiras de
+// 1 a 9 pra cada lado (você compra 10 itens físicos, não frações).
+function bestManipulatedMix(inputUnits, outputs, rate) {
+  const usable = inputUnits
+    .map((u) => {
+      const floatMid = unitFloatMid(u);
+      return floatMid != null ? { ...u, floatMid } : null;
+    })
+    .filter(Boolean);
+  if (usable.length < 2) return null;
+
+  let best = null;
+  for (const a of usable) {
+    for (const b of usable) {
+      if (a.floatMid >= b.floatMid) continue; // a = float baixo, b = float alto (evita pares duplicados)
+      for (let countB = 1; countB <= 9; countB++) {
+        const countA = 10 - countB;
+        const avgFloat = (countA * a.floatMid + countB * b.floatMid) / 10;
+        const costCents = countA * a.wear.priceUsdCents + countB * b.wear.priceUsdCents;
+        const costBrl = (costCents / 100) * rate;
+
+        const outcomes = outputs
+          .map((o) => {
+            const predicted = predictOutcomePrice(o, avgFloat, rate);
+            return {
+              name: `${o.weapon} | ${o.skin}${o.stattrak ? " (StatTrak™)" : ""}`,
+              prob: 100 / outputs.length,
+              price: predicted.price,
+              predictedWear: predicted.wear,
+              priceIsEstimate: predicted.priceIsEstimate,
+              minListings: o.minListings,
+              iconUrl: o.iconUrl,
+              floatRange: o.floatRange,
+              wearPrices: wearPricesBrl(o, rate),
+            };
+          })
+          .filter((o) => o.price != null);
+        if (!outcomes.length) continue;
+
+        const stats = computeContractStats(costBrl, outcomes);
+        if (!Number.isFinite(stats.roi)) continue;
+
+        if (!best || stats.roi > best.stats.roi) {
+          best = { a, countA, b, countB, avgFloat, costBrl, outcomes, stats };
+        }
+      }
+    }
+  }
+  return best;
+}
+
+// Sugestões de trade-up "manipulado": mesma base de dados e mesmo piso de
+// liquidez de computeSingleCollectionSuggestions, mas em vez de fixar a
+// entrada mais barata repetida 10x, testa misturas de 2 unidades diferentes
+// pra ver se dá pra pilotar o float médio pra uma saída mais barata de
+// atingir. Só entra na lista se render ROI melhor que a estratégia uniforme
+// (a maioria das coleções não ganha nada misturando — o sinal fica só nos
+// casos em que realmente compensa).
+export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
+  const { rate, menu, collectionNames } = await buildInputMenu(minListings);
+
+  const suggestions = [];
+
+  for (const [collectionTag, byRarity] of menu) {
+    for (let i = 0; i < RARITY_ORDER.length - 1; i++) {
+      const tier = RARITY_ORDER[i];
+      const nextTier = RARITY_ORDER[i + 1];
+      const tierMenu = byRarity.get(tier);
+      const nextMenu = byRarity.get(nextTier);
+      if (!tierMenu || !nextMenu) continue;
+
+      for (const stattrak of [0, 1]) {
+        const inputs = tierMenu[stattrak];
+        const outputs = nextMenu[stattrak];
+        if (!inputs?.length || !outputs?.length) continue;
+
+        const inputUnits = [];
+        for (const s of inputs) {
+          for (const w of s.wears) {
+            if (w.priceUsdCents == null) continue;
+            inputUnits.push({ skin: s, wear: w });
+          }
+        }
+        if (inputUnits.length < 2) continue;
+
+        // Baseline pra comparação: a mesma estratégia uniforme (10x a
+        // entrada mais barata) de computeSingleCollectionSuggestions.
+        const cheapestUnit = inputUnits.reduce((min, u) =>
+          u.wear.priceUsdCents < min.wear.priceUsdCents ? u : min
+        );
+        const baselineCostBrl = (cheapestUnit.wear.priceUsdCents / 100) * rate * 10;
+        let baselineAvgFloat = null;
+        if (cheapestUnit.skin.floatRange) {
+          const band = bandForWear(cheapestUnit.skin, cheapestUnit.wear.exterior);
+          if (band) baselineAvgFloat = (band.min + band.max) / 2;
+        }
+        const baselineOutcomes = outputs
+          .map((o) => predictOutcomePrice(o, baselineAvgFloat, rate))
+          .filter((p) => p.price != null)
+          .map((p) => ({ prob: 100 / outputs.length, price: p.price }));
+        const baselineStats = baselineOutcomes.length
+          ? computeContractStats(baselineCostBrl, baselineOutcomes)
+          : null;
+
+        const mix = bestManipulatedMix(inputUnits, outputs, rate);
+        if (!mix) continue;
+
+        // Só vale a pena mostrar se a mistura bate a estratégia uniforme por
+        // uma margem real — senão é só ruído numérico.
+        if (baselineStats && mix.stats.roi <= baselineStats.roi + 0.5) continue;
+
+        suggestions.push({
+          collectionTag,
+          collectionName: collectionNames.get(collectionTag) ?? collectionTag,
+          tier,
+          nextTier,
+          stattrak: !!stattrak,
+          legs: [
+            {
+              skinName: `${mix.a.skin.weapon} | ${mix.a.skin.skin}`,
+              wear: mix.a.wear.exterior,
+              count: mix.countA,
+              unitPriceBrl: (mix.a.wear.priceUsdCents / 100) * rate,
+              iconUrl: mix.a.skin.iconUrl,
+            },
+            {
+              skinName: `${mix.b.skin.weapon} | ${mix.b.skin.skin}`,
+              wear: mix.b.wear.exterior,
+              count: mix.countB,
+              unitPriceBrl: (mix.b.wear.priceUsdCents / 100) * rate,
+              iconUrl: mix.b.skin.iconUrl,
+            },
+          ],
+          assumedAvgFloat: mix.avgFloat,
+          cost: mix.costBrl,
+          baselineCost: baselineCostBrl,
+          baselineRoi: baselineStats?.roi ?? null,
+          outcomeCount: mix.outcomes.length,
+          minOutputListings: Math.min(...mix.outcomes.map((o) => o.minListings)),
+          outcomes: mix.outcomes,
+          stats: mix.stats,
         });
       }
     }

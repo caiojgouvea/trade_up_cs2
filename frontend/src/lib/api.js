@@ -44,3 +44,7 @@ export function getSyncAllStatus() {
 export function getSuggestions(minListings = 5) {
   return request(`/suggestions?minListings=${minListings}`);
 }
+
+export function getManipulatedSuggestions(minListings = 10) {
+  return request(`/suggestions/manipulated?minListings=${minListings}`);
+}
