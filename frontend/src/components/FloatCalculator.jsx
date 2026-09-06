@@ -150,11 +150,6 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
       );
       const requiredAdjustedSumMin = required.min * totalSlots - sumAdjustedFilled;
       const requiredAdjustedSumMax = required.max * totalSlots - sumAdjustedFilled;
-      const perRemainingAdjustedMin = requiredAdjustedSumMin / remaining;
-      const perRemainingAdjustedMax = requiredAdjustedSumMax / remaining;
-      const clampedAdjustedMin = Math.max(0, Math.min(1, perRemainingAdjustedMin));
-      const clampedAdjustedMax = Math.max(0, Math.min(1, perRemainingAdjustedMax));
-      const impossible = perRemainingAdjustedMax < 0 || perRemainingAdjustedMin > 1;
 
       // Quantos slots vazios existem em cada perna (pra mostrar o alvo em
       // float BRUTO — cada perna converte diferente, já que tem sua própria
@@ -167,75 +162,99 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
       });
       const emptyLegEntries = [...emptyByLeg.entries()];
 
-      resultBlock = (
-        <div style={{ marginTop: 8, fontSize: 11, color: impossible ? COLORS.rust : COLORS.text }}>
-          {filledCount > 0 && (
-            <div style={{ color: COLORS.textDim, marginBottom: 4 }}>
-              Float bruto médio dos {filledCount} preenchido(s): <strong>{fmtFloat(avgRawFilled)}</strong>{" "}
-              (média relativa considerando a faixa de cada perna: {fmtFloat(sumAdjustedFilled / (filledCount || 1))})
-            </div>
-          )}
-          {anyMissingRange && (
-            <div style={{ color: COLORS.gold, marginBottom: 4 }}>
-              Uma ou mais pernas não têm dado de float — assumindo faixa 0–1 pra elas (pode estar
-              errado se essa skin não cobrir a faixa toda).
-            </div>
-          )}
-          {impossible ? (
-            <>
-              Com os {filledCount} float(s) já preenchidos, não tem como as {remaining} restantes
-              puxarem a média pra faixa de <strong>{band.name}</strong>.
-            </>
-          ) : (
-            <>
-              Faltam <strong>{remaining}</strong>. Pra fechar em <strong>{band.name}</strong>:
-              <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-                {emptyLegEntries.map(([legIdx, count]) => {
-                  const r = legRange(legIdx);
-                  const wearAdj = legWearAdjustedRange(legIdx);
-                  // A perna já está travada num wear específico (ex:
-                  // Field-Tested) — o float dela só pode variar DENTRO da
-                  // faixa desse wear, nunca fora. Cruza isso com o alvo
-                  // calculado (que ignora o wear) antes de converter pra
-                  // float bruto, senão dá pra pedir algo impossível (tipo
-                  // "até 0.07" pra um item que só existe em Field-Tested).
-                  const intersectMin = Math.max(clampedAdjustedMin, wearAdj.min);
-                  const intersectMax = Math.min(clampedAdjustedMax, wearAdj.max);
-                  const legImpossible = wearAdj.has && intersectMin > intersectMax;
-                  const rawMax = denormalizeFloat(legImpossible ? wearAdj.max : intersectMax, r.min, r.max);
-                  const rawMin = denormalizeFloat(legImpossible ? wearAdj.min : intersectMin, r.min, r.max);
-                  const leg = resolvedLegs[legIdx];
-                  return (
-                    <li key={legIdx}>
-                      {leg.label ? <strong>{leg.label}</strong> : "entrada"} — {count}{" "}
-                      restante{count > 1 ? "s" : ""}:{" "}
-                      {legImpossible ? (
-                        <span style={{ color: COLORS.rust }}>
-                          não dá pra bater isso só com o wear dessa perna (o wear escolhido só
-                          alcança float {fmtFloat(rawMin)}–{fmtFloat(rawMax)} de qualquer jeito) —
-                          precisa a outra perna compensar mais.
-                        </span>
-                      ) : (
-                        <>
-                          float até <strong>{fmtFloat(rawMax)}</strong>
-                          {intersectMin > wearAdj.min && <> (mínimo {fmtFloat(rawMin)})</>} cada
-                        </>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-              {emptyLegEntries.length > 1 && (
-                <div style={{ marginTop: 4, color: COLORS.textDim }}>
-                  Os limites acima assumem que a média entre as pernas restantes fica equilibrada —
-                  dá pra compensar um item mais gasto numa perna com outro mais novo na mesma ou
-                  outra perna, contanto que a média relativa geral não passe do alvo.
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      );
+      // O que as pernas restantes CONSEGUEM contribuir de verdade, dado que
+      // cada uma já está travada num wear específico — não [0,1] genérico.
+      // Sem isso, um wear alvo fora do alcance de TODAS as combinações
+      // possíveis (ex: mirar Factory New com uma perna presa em Well-Worn)
+      // ainda mostrava um número "válido" pra outra perna, como se desse
+      // pra compensar — quando na real não tem combinação nenhuma que feche.
+      let achievableMinSum = 0;
+      let achievableMaxSum = 0;
+      emptyLegEntries.forEach(([legIdx, count]) => {
+        const wearAdj = legWearAdjustedRange(legIdx);
+        achievableMinSum += count * (wearAdj.has ? wearAdj.min : 0);
+        achievableMaxSum += count * (wearAdj.has ? wearAdj.max : 1);
+      });
+      const jointlyImpossible =
+        requiredAdjustedSumMax < achievableMinSum || requiredAdjustedSumMin > achievableMaxSum;
+
+      if (jointlyImpossible) {
+        const minOverallAvg = (sumAdjustedFilled + achievableMinSum) / totalSlots;
+        const maxOverallAvg = (sumAdjustedFilled + achievableMaxSum) / totalSlots;
+        const outA = outputFloatFromAvg(minOverallAvg, target.floatRange.min, target.floatRange.max);
+        const outB = outputFloatFromAvg(maxOverallAvg, target.floatRange.min, target.floatRange.max);
+        const lo = Math.min(outA, outB);
+        const hi = Math.max(outA, outB);
+        const reachable = target.wearPrices.filter((b) => b.max >= lo && b.min <= hi);
+        resultBlock = (
+          <div style={{ marginTop: 8, fontSize: 11, color: COLORS.rust }}>
+            Com os wears já travados nas pernas (não importa o float exato de cada item dentro
+            deles), essa mistura só alcança float de saída entre <strong>{fmtFloat(lo)}</strong> e{" "}
+            <strong>{fmtFloat(hi)}</strong> — <strong>{band.name}</strong> está fora disso, então
+            trocar o alvo no seletor não muda o que você precisa digitar, porque nenhuma
+            combinação fecha.
+            {reachable.length > 0 && (
+              <>
+                {" "}
+                Saída(s) que essa mistura consegue alcançar: <strong>{reachable.map((b) => b.name).join(", ")}</strong>
+                . Escolhe um desses no "Wear alvo" pra ver os números reais, ou troca o wear de
+                alguma perna pra abrir outras faixas.
+              </>
+            )}
+          </div>
+        );
+      } else {
+        const perRemainingAdjustedMin = requiredAdjustedSumMin / remaining;
+        const perRemainingAdjustedMax = requiredAdjustedSumMax / remaining;
+        const clampedAdjustedMin = Math.max(0, Math.min(1, perRemainingAdjustedMin));
+        const clampedAdjustedMax = Math.max(0, Math.min(1, perRemainingAdjustedMax));
+
+        resultBlock = (
+          <div style={{ marginTop: 8, fontSize: 11, color: COLORS.text }}>
+            {filledCount > 0 && (
+              <div style={{ color: COLORS.textDim, marginBottom: 4 }}>
+                Float bruto médio dos {filledCount} preenchido(s): <strong>{fmtFloat(avgRawFilled)}</strong>{" "}
+                (média relativa considerando a faixa de cada perna: {fmtFloat(sumAdjustedFilled / (filledCount || 1))})
+              </div>
+            )}
+            {anyMissingRange && (
+              <div style={{ color: COLORS.gold, marginBottom: 4 }}>
+                Uma ou mais pernas não têm dado de float — assumindo faixa 0–1 pra elas (pode estar
+                errado se essa skin não cobrir a faixa toda).
+              </div>
+            )}
+            Faltam <strong>{remaining}</strong>. Pra fechar em <strong>{band.name}</strong>:
+            <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+              {emptyLegEntries.map(([legIdx, count]) => {
+                const r = legRange(legIdx);
+                const wearAdj = legWearAdjustedRange(legIdx);
+                // A perna já está travada num wear específico — cruza o
+                // alvo calculado com a faixa REAL que esse wear alcança
+                // antes de converter pra float bruto.
+                const intersectMin = Math.max(clampedAdjustedMin, wearAdj.min);
+                const intersectMax = Math.min(clampedAdjustedMax, wearAdj.max);
+                const rawMax = denormalizeFloat(intersectMax, r.min, r.max);
+                const rawMin = denormalizeFloat(intersectMin, r.min, r.max);
+                const leg = resolvedLegs[legIdx];
+                return (
+                  <li key={legIdx}>
+                    {leg.label ? <strong>{leg.label}</strong> : "entrada"} — {count} restante
+                    {count > 1 ? "s" : ""}: float até <strong>{fmtFloat(rawMax)}</strong>
+                    {intersectMin > wearAdj.min && <> (mínimo {fmtFloat(rawMin)})</>} cada
+                  </li>
+                );
+              })}
+            </ul>
+            {emptyLegEntries.length > 1 && (
+              <div style={{ marginTop: 4, color: COLORS.textDim }}>
+                Os limites acima assumem que a média entre as pernas restantes fica equilibrada —
+                dá pra compensar um item mais gasto numa perna com outro mais novo na mesma ou
+                outra perna, contanto que a média relativa geral não passe do alvo.
+              </div>
+            )}
+          </div>
+        );
+      }
     }
   }
 
