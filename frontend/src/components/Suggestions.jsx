@@ -377,6 +377,9 @@ export default function Suggestions() {
                               <ItemThumb iconUrl={s.inputIconUrl} rarity={s.tier} size={28} />
                               <span>
                                 {s.inputSkin}
+                                {s.inputWear && (
+                                  <span style={{ color: COLORS.textDim }}> ({s.inputWear})</span>
+                                )}
                                 {s.inputLiquidityWarning && (
                                   <AlertTriangle
                                     size={11}
@@ -444,7 +447,10 @@ export default function Suggestions() {
                             <div
                               style={{ display: "flex", flexDirection: "column", gap: 3 }}
                               title={s.outcomes
-                                .map((o) => `${o.name} · ${fmtBRL(o.price)} · ${o.minListings} anúncios`)
+                                .map(
+                                  (o) =>
+                                    `${o.name} (${o.predictedWear ?? "média entre wears"}) · ${fmtBRL(o.price)} · ${o.minListings} anúncios`
+                                )
                                 .join(" | ")}
                             >
                               {s.outcomes.slice(0, 3).map((o, i) => (
@@ -460,6 +466,9 @@ export default function Suggestions() {
                                     }}
                                   >
                                     {o.name}
+                                    {o.predictedWear && (
+                                      <span style={{ opacity: 0.7 }}> ({o.predictedWear})</span>
+                                    )}
                                   </span>
                                 </div>
                               ))}
@@ -479,6 +488,20 @@ export default function Suggestions() {
                                 Valor esperado: {fmtBRL(s.stats.ev)} · Lucro esperado:{" "}
                                 {fmtBRL(s.stats.evProfit)} · {s.outcomeCount} saídas possíveis (1/
                                 {s.outcomeCount} de chance cada)
+                              </div>
+                              <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
+                                {s.assumedAvgFloat != null ? (
+                                  <>
+                                    Preço de cada saída já considera o wear real previsto — assumindo
+                                    que você compra o input em <strong>{s.inputWear}</strong> (float
+                                    médio ~{fmtFloat(s.assumedAvgFloat)}), não uma média entre wears.
+                                  </>
+                                ) : (
+                                  <>
+                                    Sem dado de float pra essa entrada — os preços das saídas aqui são
+                                    uma média entre os wears possíveis (aproximação).
+                                  </>
+                                )}
                               </div>
                               {s.floatInfo?.available && (
                                 <div
@@ -552,6 +575,9 @@ export default function Suggestions() {
                                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                     <ItemThumb iconUrl={o.iconUrl} rarity={s.nextTier} size={26} />
                                     {o.name}
+                                    {o.predictedWear && (
+                                      <span style={{ color: COLORS.textDim }}>({o.predictedWear})</span>
+                                    )}
                                   </span>
                                   <span style={{ color: COLORS.textDim, whiteSpace: "nowrap" }}>
                                     {o.prob.toFixed(1)}% · {fmtBRL(o.price)} · {o.minListings} anúncios

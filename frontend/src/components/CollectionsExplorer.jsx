@@ -153,11 +153,25 @@ export default function CollectionsExplorer() {
   function tradeUpPreview(item) {
     const tierInfo = outcomeMenu[item.rarity];
     if (!tierInfo || item.priceBrlEstimate == null) return null;
-    const outcomes = item.stattrak ? tierInfo.stattrak : tierInfo.normal;
+
+    // Prevê o wear real de cada saída assumindo que você compra ESSE wear
+    // específico (não a média entre wears) — cai pra média só se faltar
+    // dado de float pra esse item exato.
+    const perInput = item.stattrak ? tierInfo.perInputStattrak : tierInfo.perInputNormal;
+    const key = `${item.weapon}|${item.skin}|${item.exterior}`;
+    const exact = perInput?.[key];
+    const outcomes = exact?.outcomes ?? (item.stattrak ? tierInfo.stattrak : tierInfo.normal);
     if (!outcomes || outcomes.length === 0) return null;
+
     const stats = computeStats({ cost: item.priceBrlEstimate * 10, outcomes });
     const bestOutcome = item.stattrak ? tierInfo.bestOutcomeStattrak : tierInfo.bestOutcomeNormal;
-    return { stats, outcomes, nextTier: tierInfo.nextTier, bestOutcome };
+    return {
+      stats,
+      outcomes,
+      nextTier: tierInfo.nextTier,
+      bestOutcome,
+      assumedAvgFloat: exact?.assumedAvgFloat ?? null,
+    };
   }
 
   return (
@@ -409,7 +423,7 @@ export default function CollectionsExplorer() {
                               ) : (
                                 <div
                                   title={`Vira (${preview.nextTier}): ${preview.outcomes
-                                    .map((o) => `${o.name} · ${fmtBRL(o.price)}`)
+                                    .map((o) => `${o.name} (${o.predictedWear ?? "média"}) · ${fmtBRL(o.price)}`)
                                     .join(" | ")}`}
                                 >
                                   <span style={{ color: preview.stats.verdictColor, fontWeight: 600 }}>
@@ -420,6 +434,12 @@ export default function CollectionsExplorer() {
                                     {" "}
                                     · risco {preview.stats.probLoss.toFixed(0)}%
                                   </span>
+                                  {preview.assumedAvgFloat != null && (
+                                    <span style={{ color: COLORS.textDim, fontSize: 10 }}>
+                                      {" "}
+                                      · float ~{fmtFloat(preview.assumedAvgFloat)}
+                                    </span>
+                                  )}
                                   <div
                                     style={{
                                       color: COLORS.textDim,
@@ -430,7 +450,10 @@ export default function CollectionsExplorer() {
                                       whiteSpace: "nowrap",
                                     }}
                                   >
-                                    → {preview.outcomes.map((o) => o.name).join(", ")}
+                                    →{" "}
+                                    {preview.outcomes
+                                      .map((o) => `${o.name}${o.predictedWear ? ` (${o.predictedWear})` : ""}`)
+                                      .join(", ")}
                                   </div>
                                   {preview.bestOutcome && (
                                     <div style={{ color: COLORS.textDim, marginTop: 2, fontSize: 10 }}>

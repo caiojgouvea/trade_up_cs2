@@ -2,7 +2,7 @@ import { db } from "./db.js";
 import { getUsdToBrlRate } from "./fx.js";
 import { RARITY_ORDER } from "./rarity.js";
 import { getFloatRangeMap } from "./floatData.js";
-import { clippedBands, requiredAvgFloatRange, rangesOverlap } from "./floatMath.js";
+import { clippedBands, requiredAvgFloatRange, rangesOverlap, outputFloatFromAvg } from "./floatMath.js";
 
 // Mesma fórmula de src/lib/tradeUpMath.js do frontend — duplicada de
 // propósito (é pouca lógica, e mantém backend/frontend independentes).
@@ -76,6 +76,40 @@ function mostExpensivePricedWear(skinGroup) {
 
 function bandForWear(skinGroup, exterior) {
   return skinGroup.bands.find((b) => b.name === exterior) ?? null;
+}
+
+function bandForFloat(skinGroup, floatValue) {
+  return skinGroup.bands.find((b) => floatValue >= b.min && floatValue <= b.max) ?? null;
+}
+
+function priceForWear(skinGroup, exterior) {
+  return skinGroup.wears.find((w) => w.exterior === exterior)?.priceUsdCents ?? null;
+}
+
+// O ponto central da correção: o wear de saída NÃO é sorteado, é
+// determinístico a partir da média de float de entrada. Dado o float médio
+// assumido (baseado no wear real que você compraria), prevê exatamente qual
+// wear cada possível skin de saída teria — e usa o preço REAL desse wear, não
+// uma média entre todos os wears. Só cai pra média se faltar dado de float
+// (pra skin de saída, ou pro input) ou se o wear previsto não tiver preço.
+function predictOutcomePrice(outputSkin, assumedAvgFloat, rate) {
+  if (assumedAvgFloat != null && outputSkin.floatRange) {
+    const predictedFloat = outputFloatFromAvg(
+      assumedAvgFloat,
+      outputSkin.floatRange.min,
+      outputSkin.floatRange.max
+    );
+    const band = bandForFloat(outputSkin, predictedFloat);
+    if (band) {
+      const cents = priceForWear(outputSkin, band.name);
+      if (cents != null) {
+        return { price: (cents / 100) * rate, wear: band.name, predicted: true };
+      }
+    }
+  }
+  return outputSkin.avgUsdCents != null
+    ? { price: (outputSkin.avgUsdCents / 100) * rate, wear: null, predicted: false }
+    : { price: null, wear: null, predicted: false };
 }
 
 // Preço (em BRL) de cada banda de wear que a skin realmente alcança, pra
@@ -208,27 +242,55 @@ export async function computeSingleCollectionSuggestions({ minListings = 5 } = {
         const outputs = nextMenu[stattrak];
         if (!inputs?.length || !outputs?.length) continue;
 
-        const liquidInputs = inputs.filter((s) => s.minListings >= minListings);
-        const inputPool = liquidInputs.length ? liquidInputs : inputs;
-        const cheapestInput = inputPool.reduce((min, s) =>
-          s.avgUsdCents < min.avgUsdCents ? s : min
+        // Unidades realmente compráveis: cada skin+wear específico com
+        // preço, não a média da skin (você não compra "a média").
+        const inputUnits = [];
+        for (const s of inputs) {
+          for (const w of s.wears) {
+            if (w.priceUsdCents == null) continue;
+            inputUnits.push({ skin: s, wear: w });
+          }
+        }
+        if (!inputUnits.length) continue;
+
+        const liquidUnits = inputUnits.filter((u) => u.wear.sellListings >= minListings);
+        const unitPool = liquidUnits.length ? liquidUnits : inputUnits;
+        const cheapestUnit = unitPool.reduce((min, u) =>
+          u.wear.priceUsdCents < min.wear.priceUsdCents ? u : min
         );
 
-        const costBrl = ((cheapestInput.avgUsdCents / 100) * rate) * 10;
-        const outcomes = outputs.map((o) => ({
-          name: `${o.weapon} | ${o.skin}${stattrak ? " (StatTrak™)" : ""}`,
-          prob: 100 / outputs.length,
-          price: (o.avgUsdCents / 100) * rate,
-          minListings: o.minListings,
-          iconUrl: o.iconUrl,
-          floatRange: o.floatRange,
-          wearPrices: wearPricesBrl(o, rate),
-        }));
+        const costBrl = (cheapestUnit.wear.priceUsdCents / 100) * rate * 10;
+
+        // Float médio assumido = meio da faixa do wear que você realmente
+        // compraria (a entrada mais barata). Sem isso, cai pro método antigo
+        // (média entre wears) só pra essa skin de entrada específica.
+        let assumedAvgFloat = null;
+        if (cheapestUnit.skin.floatRange) {
+          const inBand = bandForWear(cheapestUnit.skin, cheapestUnit.wear.exterior);
+          if (inBand) assumedAvgFloat = (inBand.min + inBand.max) / 2;
+        }
+
+        const outcomes = outputs
+          .map((o) => {
+            const predicted = predictOutcomePrice(o, assumedAvgFloat, rate);
+            return {
+              name: `${o.weapon} | ${o.skin}${stattrak ? " (StatTrak™)" : ""}`,
+              prob: 100 / outputs.length,
+              price: predicted.price,
+              predictedWear: predicted.wear,
+              minListings: o.minListings,
+              iconUrl: o.iconUrl,
+              floatRange: o.floatRange,
+              wearPrices: wearPricesBrl(o, rate),
+            };
+          })
+          .filter((o) => o.price != null);
+        if (!outcomes.length) continue;
 
         const stats = computeContractStats(costBrl, outcomes);
         if (!Number.isFinite(stats.roi)) continue;
 
-        const floatInfo = computeFloatGuidance({ cheapestInput, outputs, rate });
+        const floatInfo = computeFloatGuidance({ cheapestInput: cheapestUnit.skin, outputs, rate });
 
         suggestions.push({
           collectionTag,
@@ -236,10 +298,12 @@ export async function computeSingleCollectionSuggestions({ minListings = 5 } = {
           tier,
           nextTier,
           stattrak: !!stattrak,
-          inputSkin: `${cheapestInput.weapon} | ${cheapestInput.skin}`,
-          inputIconUrl: cheapestInput.iconUrl,
-          inputListings: cheapestInput.minListings,
-          inputLiquidityWarning: !liquidInputs.length,
+          inputSkin: `${cheapestUnit.skin.weapon} | ${cheapestUnit.skin.skin}`,
+          inputWear: cheapestUnit.wear.exterior,
+          inputIconUrl: cheapestUnit.skin.iconUrl,
+          inputListings: cheapestUnit.wear.sellListings,
+          inputLiquidityWarning: !liquidUnits.length,
+          assumedAvgFloat,
           cost: costBrl,
           outcomeCount: outcomes.length,
           minOutputListings: Math.min(...outcomes.map((o) => o.minListings)),
@@ -345,12 +409,52 @@ export async function getCollectionOutcomeMenu(collectionTag) {
       };
     };
 
+    const tierMenu = byRarity.get(tier);
+
+    // Outcomes determinísticos por wear específico de entrada — a raridade
+    // não muda a saída possível, mas o WEAR de cada item de entrada muda o
+    // float médio assumido, e portanto o wear (e preço) previsto de cada
+    // saída. Chave: "arma|skin|wear".
+    const buildPerInput = (inputSkins, outputSkins) => {
+      const perInput = {};
+      for (const inSkin of inputSkins ?? []) {
+        for (const w of inSkin.wears) {
+          if (w.priceUsdCents == null) continue;
+          let assumedAvgFloat = null;
+          if (inSkin.floatRange) {
+            const band = bandForWear(inSkin, w.exterior);
+            if (band) assumedAvgFloat = (band.min + band.max) / 2;
+          }
+          const outcomes = outputSkins
+            .map((o) => {
+              const predicted = predictOutcomePrice(o, assumedAvgFloat, rate);
+              return {
+                name: `${o.weapon} | ${o.skin}`,
+                prob: 100 / outputSkins.length,
+                price: predicted.price,
+                predictedWear: predicted.wear,
+                minListings: o.minListings,
+                iconUrl: o.iconUrl,
+                floatRange: o.floatRange,
+                wearPrices: wearPricesBrl(o, rate),
+              };
+            })
+            .filter((o) => o.price != null);
+          if (!outcomes.length) continue;
+          perInput[`${inSkin.weapon}|${inSkin.skin}|${w.exterior}`] = { assumedAvgFloat, outcomes };
+        }
+      }
+      return perInput;
+    };
+
     byTier[tier] = {
       nextTier,
       normal: nextMenu[0].length ? toOutcomes(nextMenu[0]) : [],
       stattrak: nextMenu[1].length ? toOutcomes(nextMenu[1]) : [],
       bestOutcomeNormal: nextMenu[0].length ? bestPerSide(nextMenu[0]) : null,
       bestOutcomeStattrak: nextMenu[1].length ? bestPerSide(nextMenu[1]) : null,
+      perInputNormal: buildPerInput(tierMenu?.[0], nextMenu[0]),
+      perInputStattrak: buildPerInput(tierMenu?.[1], nextMenu[1]),
     };
   }
 
