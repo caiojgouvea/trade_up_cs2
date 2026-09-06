@@ -12,6 +12,11 @@ import {
   getExactPrice,
 } from "../lib/api";
 
+function wearLabel(o) {
+  if (!o.predictedWear) return "média entre wears";
+  return o.priceIsEstimate ? `${o.predictedWear}, estimado` : o.predictedWear;
+}
+
 export default function CollectionsExplorer() {
   const [collections, setCollections] = useState([]);
   const [collectionsLoading, setCollectionsLoading] = useState(true);
@@ -449,7 +454,7 @@ export default function CollectionsExplorer() {
                               ) : (
                                 <div
                                   title={`Vira (${preview.nextTier}): ${preview.outcomes
-                                    .map((o) => `${o.name} (${o.predictedWear ?? "média"}) · ${fmtBRL(o.price)}`)
+                                    .map((o) => `${o.name} (${wearLabel(o)}) · ${fmtBRL(o.price)}`)
                                     .join(" | ")}`}
                                 >
                                   <span style={{ color: preview.stats.verdictColor, fontWeight: 600 }}>
@@ -477,9 +482,7 @@ export default function CollectionsExplorer() {
                                     }}
                                   >
                                     →{" "}
-                                    {preview.outcomes
-                                      .map((o) => `${o.name}${o.predictedWear ? ` (${o.predictedWear})` : ""}`)
-                                      .join(", ")}
+                                    {preview.outcomes.map((o) => `${o.name} (${wearLabel(o)})`).join(", ")}
                                   </div>
                                   {preview.bestOutcome && (
                                     <div style={{ color: COLORS.textDim, marginTop: 2, fontSize: 10 }}>

@@ -21,6 +21,11 @@ import SuggestionsTooltip from "./SuggestionsTooltip";
 import ItemThumb from "./ItemThumb";
 import FloatCalculator from "./FloatCalculator";
 
+function wearLabel(o) {
+  if (!o.predictedWear) return "média entre wears";
+  return o.priceIsEstimate ? `${o.predictedWear}, preço estimado` : o.predictedWear;
+}
+
 const VERDICT_COLOR = {
   "Bom contrato": COLORS.green,
   Arriscado: COLORS.gold,
@@ -472,10 +477,7 @@ export default function Suggestions() {
                             <div
                               style={{ display: "flex", flexDirection: "column", gap: 3 }}
                               title={s.outcomes
-                                .map(
-                                  (o) =>
-                                    `${o.name} (${o.predictedWear ?? "média entre wears"}) · ${fmtBRL(o.price)} · ${o.minListings} anúncios`
-                                )
+                                .map((o) => `${o.name} (${wearLabel(o)}) · ${fmtBRL(o.price)} · ${o.minListings} anúncios`)
                                 .join(" | ")}
                             >
                               {s.outcomes.slice(0, 3).map((o, i) => (
@@ -492,7 +494,11 @@ export default function Suggestions() {
                                   >
                                     {o.name}
                                     {o.predictedWear && (
-                                      <span style={{ opacity: 0.7 }}> ({o.predictedWear})</span>
+                                      <span style={{ color: o.priceIsEstimate ? COLORS.gold : "inherit", opacity: o.priceIsEstimate ? 1 : 0.7 }}>
+                                        {" "}
+                                        ({o.predictedWear}
+                                        {o.priceIsEstimate ? "≈" : ""})
+                                      </span>
                                     )}
                                   </span>
                                 </div>
@@ -600,9 +606,9 @@ export default function Suggestions() {
                                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                     <ItemThumb iconUrl={o.iconUrl} rarity={s.nextTier} size={26} />
                                     {o.name}
-                                    {o.predictedWear && (
-                                      <span style={{ color: COLORS.textDim }}>({o.predictedWear})</span>
-                                    )}
+                                    <span style={{ color: o.priceIsEstimate ? COLORS.gold : COLORS.textDim }}>
+                                      ({wearLabel(o)})
+                                    </span>
                                   </span>
                                   <span style={{ color: COLORS.textDim, whiteSpace: "nowrap" }}>
                                     {o.prob.toFixed(1)}% · {fmtBRL(o.price)} · {o.minListings} anúncios

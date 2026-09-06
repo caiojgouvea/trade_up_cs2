@@ -86,6 +86,27 @@ function priceForWear(skinGroup, exterior) {
   return skinGroup.wears.find((w) => w.exterior === exterior)?.priceUsdCents ?? null;
 }
 
+// Quando o wear previsto não tem preço confiável, o vizinho mais próximo (por
+// faixa de float) é uma estimativa bem menos enviesada que a média de todos
+// os wears — que normalmente inclui Factory New, puxando pra cima demais se
+// o wear real que sairia for um dos mais gastos (o caso mais comum).
+function nearestPricedBand(skinGroup, targetBand) {
+  const targetMid = (targetBand.min + targetBand.max) / 2;
+  let best = null;
+  let bestDist = Infinity;
+  for (const b of skinGroup.bands) {
+    const cents = priceForWear(skinGroup, b.name);
+    if (cents == null) continue;
+    const mid = (b.min + b.max) / 2;
+    const dist = Math.abs(mid - targetMid);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = { name: b.name, priceUsdCents: cents };
+    }
+  }
+  return best;
+}
+
 // O ponto central da correção: o wear de saída NÃO é sorteado, é
 // determinístico a partir da média de float de entrada. Dado o float médio
 // assumido (baseado no wear real que você compraria), prevê exatamente qual
@@ -93,23 +114,45 @@ function priceForWear(skinGroup, exterior) {
 // uma média entre todos os wears. Só cai pra média se faltar dado de float
 // (pra skin de saída, ou pro input) ou se o wear previsto não tiver preço.
 function predictOutcomePrice(outputSkin, assumedAvgFloat, rate) {
+  let predictedWear = null;
+  let targetBand = null;
+
   if (assumedAvgFloat != null && outputSkin.floatRange) {
     const predictedFloat = outputFloatFromAvg(
       assumedAvgFloat,
       outputSkin.floatRange.min,
       outputSkin.floatRange.max
     );
-    const band = bandForFloat(outputSkin, predictedFloat);
-    if (band) {
-      const cents = priceForWear(outputSkin, band.name);
+    targetBand = bandForFloat(outputSkin, predictedFloat);
+    if (targetBand) {
+      predictedWear = targetBand.name;
+      const cents = priceForWear(outputSkin, targetBand.name);
       if (cents != null) {
-        return { price: (cents / 100) * rate, wear: band.name, predicted: true };
+        return { price: (cents / 100) * rate, wear: targetBand.name, predicted: true, priceIsEstimate: false };
       }
     }
   }
+
+  // Sabemos qual wear sairia (o float é determinístico), mas esse wear
+  // específico não tem anúncio suficiente pra confiar num preço dele. Usa o
+  // preço do wear vizinho mais próximo como estimativa (bem menos enviesado
+  // que a média de todos os wears, que normalmente inclui Factory New e
+  // puxaria a estimativa pra cima se o wear real for um dos mais gastos).
+  if (targetBand) {
+    const neighbor = nearestPricedBand(outputSkin, targetBand);
+    if (neighbor) {
+      return {
+        price: (neighbor.priceUsdCents / 100) * rate,
+        wear: predictedWear,
+        predicted: false,
+        priceIsEstimate: true,
+      };
+    }
+  }
+
   return outputSkin.avgUsdCents != null
-    ? { price: (outputSkin.avgUsdCents / 100) * rate, wear: null, predicted: false }
-    : { price: null, wear: null, predicted: false };
+    ? { price: (outputSkin.avgUsdCents / 100) * rate, wear: predictedWear, predicted: false, priceIsEstimate: true }
+    : { price: null, wear: predictedWear, predicted: false, priceIsEstimate: true };
 }
 
 // Preço (em BRL) de cada banda de wear que a skin realmente alcança, pra
@@ -286,6 +329,7 @@ export async function computeSingleCollectionSuggestions({ minListings = 10 } = 
               prob: 100 / outputs.length,
               price: predicted.price,
               predictedWear: predicted.wear,
+              priceIsEstimate: predicted.priceIsEstimate,
               minListings: o.minListings,
               iconUrl: o.iconUrl,
               floatRange: o.floatRange,
@@ -444,6 +488,7 @@ export async function getCollectionOutcomeMenu(collectionTag) {
                 prob: 100 / outputSkins.length,
                 price: predicted.price,
                 predictedWear: predicted.wear,
+                priceIsEstimate: predicted.priceIsEstimate,
                 minListings: o.minListings,
                 iconUrl: o.iconUrl,
                 floatRange: o.floatRange,
