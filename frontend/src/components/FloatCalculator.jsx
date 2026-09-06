@@ -1,9 +1,19 @@
 import { useMemo, useState } from "react";
+import { Info } from "lucide-react";
 import { COLORS } from "../lib/colors";
 import { fmtBRL, fmtFloat } from "../lib/tradeUpMath";
 import { outputFloatFromAvg, findBand, requiredAvgForBand } from "../lib/floatMath";
 
 const SLOTS = 10;
+
+function bestBandIndex(outcome) {
+  if (!outcome) return 0;
+  return outcome.wearPrices.reduce(
+    (best, b, i) =>
+      b.price != null && (best === -1 || b.price > outcome.wearPrices[best].price) ? i : best,
+    -1
+  );
+}
 
 export default function FloatCalculator({ outcomes, defaultOutcomeName }) {
   const candidateOutcomes = useMemo(
@@ -18,16 +28,10 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName }) {
   const [targetIdx, setTargetIdx] = useState(defaultIdx === -1 ? 0 : defaultIdx);
   const target = candidateOutcomes[targetIdx];
 
-  const bestBandIdx = target
-    ? target.wearPrices.reduce(
-        (best, b, i) =>
-          b.price != null && (best === -1 || b.price > target.wearPrices[best].price) ? i : best,
-        -1
-      )
-    : -1;
-  const [bandIdx, setBandIdx] = useState(bestBandIdx);
+  const [bandIdx, setBandIdx] = useState(() => bestBandIndex(target));
   const band = target?.wearPrices[bandIdx] ?? target?.wearPrices[0];
 
+  const [showInfo, setShowInfo] = useState(false);
   const [floats, setFloats] = useState(Array(SLOTS).fill(""));
 
   if (!candidateOutcomes.length) {
@@ -36,6 +40,11 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName }) {
         Nenhuma das saídas possíveis tem dado de float carregado ainda.
       </div>
     );
+  }
+
+  function selectTarget(idx) {
+    setTargetIdx(idx);
+    setBandIdx(bestBandIndex(candidateOutcomes[idx]));
   }
 
   function updateFloat(i, value) {
@@ -133,15 +142,13 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName }) {
     >
       <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>Calculadora de float</div>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
+        <label style={{ fontSize: 10, color: COLORS.textDim }}>Saída:</label>
         <select
           className="tuc-input"
           style={{ width: "auto", fontSize: 11 }}
           value={targetIdx}
-          onChange={(e) => {
-            setTargetIdx(Number(e.target.value));
-            setBandIdx(-1);
-          }}
+          onChange={(e) => selectTarget(Number(e.target.value))}
         >
           {candidateOutcomes.map((o, i) => (
             <option key={i} value={i}>
@@ -149,25 +156,71 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName }) {
             </option>
           ))}
         </select>
+
+        <label style={{ fontSize: 10, color: COLORS.textDim, marginLeft: 8 }}>Wear alvo:</label>
+        <select
+          className="tuc-input"
+          style={{ width: "auto", fontSize: 11 }}
+          value={bandIdx}
+          onChange={(e) => setBandIdx(Number(e.target.value))}
+        >
+          {target?.wearPrices.map((b, i) => (
+            <option key={b.name} value={i}>
+              {b.name} {b.price != null ? `· ${fmtBRL(b.price)}` : ""}
+            </option>
+          ))}
+        </select>
+
+        <button
+          onClick={() => setShowInfo((v) => !v)}
+          className="tuc-icon-btn"
+          title="Sobre as faixas de float"
+          style={{ color: showInfo ? COLORS.gold : COLORS.textDim }}
+        >
+          <Info size={15} />
+        </button>
       </div>
 
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-        {target?.wearPrices.map((b, i) => (
-          <button
-            key={b.name}
-            onClick={() => setBandIdx(i)}
-            className="tuc-btn-ghost"
-            style={{
-              fontSize: 10,
-              padding: "4px 8px",
-              borderColor: bandIdx === i ? COLORS.gold : COLORS.border,
-              color: bandIdx === i ? COLORS.gold : COLORS.textDim,
-            }}
-          >
-            {b.name} ({fmtFloat(b.min)}–{fmtFloat(b.max)}) {b.price != null ? fmtBRL(b.price) : "—"}
-          </button>
-        ))}
-      </div>
+      {showInfo && (
+        <div
+          style={{
+            fontSize: 10,
+            color: COLORS.textDim,
+            background: COLORS.panelAlt,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 6,
+            padding: 8,
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ marginBottom: 6 }}>
+            O float vai de 0 a 1 e define o desgaste visual da arma: quanto mais baixo, mais nova
+            (Factory New); quanto mais alto, mais gasta (Battle-Scarred). Cada skin tem seu próprio
+            min/max — por isso as faixas abaixo são específicas de <strong>{target?.name}</strong>,
+            não as faixas padrão do jogo.
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", fontWeight: 500, paddingBottom: 3 }}>Wear</th>
+                <th style={{ textAlign: "left", fontWeight: 500, paddingBottom: 3 }}>Faixa de float</th>
+                <th style={{ textAlign: "left", fontWeight: 500, paddingBottom: 3 }}>Preço</th>
+              </tr>
+            </thead>
+            <tbody>
+              {target?.wearPrices.map((b) => (
+                <tr key={b.name} style={{ color: b.name === band?.name ? COLORS.gold : COLORS.textDim }}>
+                  <td>{b.name}</td>
+                  <td>
+                    {fmtFloat(b.min)}–{fmtFloat(b.max)}
+                  </td>
+                  <td>{b.price != null ? fmtBRL(b.price) : "sem preço"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div style={{ fontSize: 10, color: COLORS.textDim, marginBottom: 4 }}>
         Floats que você já tem/pretende comprar (deixe em branco o que não souber):
