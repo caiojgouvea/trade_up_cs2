@@ -1,11 +1,15 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Star, Shuffle } from "lucide-react";
+import { ChevronDown, ChevronUp, Star, Shuffle, ExternalLink, AlertTriangle } from "lucide-react";
 import { COLORS } from "../lib/colors";
 import { fmtBRL, fmtFloat } from "../lib/tradeUpMath";
 import { rarityColor } from "../lib/rarity";
 import { loadFavoriteManipulated, saveFavoriteManipulated, manipulatedKey } from "../lib/favorites";
 import { getManipulatedSuggestions } from "../lib/api";
 import ItemThumb from "./ItemThumb";
+
+function steamMarketUrl(marketHashName) {
+  return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketHashName)}`;
+}
 
 function wearLabel(o) {
   if (!o.predictedWear) return "média entre wears";
@@ -127,6 +131,28 @@ export default function ManipulatedSuggestions() {
       </div>
 
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "flex-start",
+            background: COLORS.panel,
+            border: `1px solid ${COLORS.gold}`,
+            borderRadius: 8,
+            padding: 12,
+            marginBottom: 16,
+            fontSize: 12,
+          }}
+        >
+          <AlertTriangle size={16} color={COLORS.gold} style={{ flexShrink: 0, marginTop: 1 }} />
+          <div>
+            <strong style={{ color: COLORS.gold }}>Cuidado ao comprar:</strong> a mistura só funciona
+            se você comprar exatamente o wear indicado de cada perna — errar isso destrói o float
+            calculado (às vezes o preço entre wears é centavos de diferença, fácil de comprar o
+            errado sem perceber). Use o link "abrir no mercado" de cada perna abaixo — ele leva
+            direto pra página daquele wear específico, não pra busca geral do item.
+          </div>
+        </div>
         {error && (
           <div
             style={{
@@ -274,6 +300,16 @@ export default function ManipulatedSuggestions() {
                                     {l.count}x {l.skinName}{" "}
                                     <span style={{ color: COLORS.textDim }}>({l.wear})</span>
                                   </span>
+                                  <a
+                                    href={steamMarketUrl(l.marketHashName)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{ color: COLORS.gold, display: "flex", alignItems: "center" }}
+                                    title="Abrir no mercado (página exata desse wear)"
+                                  >
+                                    <ExternalLink size={12} />
+                                  </a>
                                 </div>
                               ))}
                             </div>
@@ -366,6 +402,41 @@ export default function ManipulatedSuggestions() {
                                   {s.baselineRoi.toFixed(1)}% sozinha, contra {s.stats.roi >= 0 ? "+" : ""}
                                   {s.stats.roi.toFixed(1)}% misturando</>
                                 )}.
+                              </div>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 6,
+                                  marginBottom: 10,
+                                  padding: "8px 10px",
+                                  borderRadius: 6,
+                                  border: `1px solid ${COLORS.border}`,
+                                }}
+                              >
+                                <span style={{ fontSize: 10, color: COLORS.textDim, textTransform: "uppercase" }}>
+                                  Comprar exatamente isso (clique pra abrir a página certa de cada wear):
+                                </span>
+                                {s.legs.map((l, i) => (
+                                  <a
+                                    key={i}
+                                    href={steamMarketUrl(l.marketHashName)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 8,
+                                      fontSize: 12,
+                                      color: COLORS.gold,
+                                      textDecoration: "none",
+                                    }}
+                                  >
+                                    <ItemThumb iconUrl={l.iconUrl} rarity={s.tier} size={22} />
+                                    {l.count}x {l.skinName} ({l.wear}) — {fmtBRL(l.unitPriceBrl)} cada
+                                    <ExternalLink size={12} />
+                                  </a>
+                                ))}
                               </div>
                               {s.outcomes.map((o, i) => (
                                 <div

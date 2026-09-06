@@ -82,6 +82,14 @@ function bandForFloat(skinGroup, floatValue) {
   return skinGroup.bands.find((b) => floatValue >= b.min && floatValue <= b.max) ?? null;
 }
 
+// Nome exato de mercado (Steam usa isso como identificador da página do
+// item) — serve pra montar um link direto pra página certa, eliminando
+// qualquer ambiguidade sobre qual wear comprar (crítico pro trade-up
+// manipulado: comprar o wear errado destrói a mistura calculada).
+function marketHashName({ weapon, skin, exterior, stattrak }) {
+  return `${stattrak ? "StatTrak™ " : ""}${weapon} | ${skin} (${exterior})`;
+}
+
 function priceForWear(skinGroup, exterior) {
   return skinGroup.wears.find((w) => w.exterior === exterior)?.priceUsdCents ?? null;
 }
@@ -525,6 +533,12 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
               count: mix.countA,
               unitPriceBrl: (mix.a.wear.priceUsdCents / 100) * rate,
               iconUrl: mix.a.skin.iconUrl,
+              marketHashName: marketHashName({
+                weapon: mix.a.skin.weapon,
+                skin: mix.a.skin.skin,
+                exterior: mix.a.wear.exterior,
+                stattrak: !!stattrak,
+              }),
             },
             {
               skinName: `${mix.b.skin.weapon} | ${mix.b.skin.skin}`,
@@ -532,6 +546,12 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
               count: mix.countB,
               unitPriceBrl: (mix.b.wear.priceUsdCents / 100) * rate,
               iconUrl: mix.b.skin.iconUrl,
+              marketHashName: marketHashName({
+                weapon: mix.b.skin.weapon,
+                skin: mix.b.skin.skin,
+                exterior: mix.b.wear.exterior,
+                stattrak: !!stattrak,
+              }),
             },
           ],
           assumedAvgFloat: mix.avgFloat,
