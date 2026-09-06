@@ -49,6 +49,7 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName }) {
   const filledCount = filled.length;
   const remaining = SLOTS - filledCount;
   const sumFilled = filled.reduce((s, v) => s + v, 0);
+  const avgFilled = filledCount > 0 ? sumFilled / filledCount : null;
 
   let resultBlock = null;
 
@@ -90,6 +91,12 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName }) {
 
       resultBlock = (
         <div style={{ marginTop: 8, fontSize: 11, color: impossible ? COLORS.rust : COLORS.text }}>
+          {filledCount > 0 && (
+            <div style={{ color: COLORS.textDim, marginBottom: 4 }}>
+              Float médio dos {filledCount} preenchido(s): <strong>{fmtFloat(avgFilled)}</strong>{" "}
+              (soma até agora: {fmtFloat(sumFilled)})
+            </div>
+          )}
           {impossible ? (
             <>
               Com os {filledCount} float(s) já preenchidos, não tem como as {remaining} restantes
