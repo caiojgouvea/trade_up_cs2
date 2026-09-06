@@ -1,8 +1,6 @@
-const KEY = "trade-up-favorite-items";
-
-export function loadFavorites() {
+function loadSet(key) {
   try {
-    const raw = window.localStorage.getItem(KEY);
+    const raw = window.localStorage.getItem(key);
     return raw ? new Set(JSON.parse(raw)) : new Set();
   } catch (e) {
     console.error("Falha ao carregar favoritos:", e);
@@ -10,10 +8,30 @@ export function loadFavorites() {
   }
 }
 
-export function saveFavorites(set) {
+function saveSet(key, set) {
   try {
-    window.localStorage.setItem(KEY, JSON.stringify([...set]));
+    window.localStorage.setItem(key, JSON.stringify([...set]));
   } catch (e) {
     console.error("Falha ao salvar favoritos:", e);
   }
+}
+
+export function loadFavorites() {
+  return loadSet("trade-up-favorite-items");
+}
+
+export function saveFavorites(set) {
+  saveSet("trade-up-favorite-items", set);
+}
+
+export function loadFavoriteSuggestions() {
+  return loadSet("trade-up-favorite-suggestions");
+}
+
+export function saveFavoriteSuggestions(set) {
+  saveSet("trade-up-favorite-suggestions", set);
+}
+
+export function suggestionKey(s) {
+  return `${s.collectionTag}|${s.tier}|${s.nextTier}|${s.stattrak}`;
 }

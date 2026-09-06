@@ -11,10 +11,11 @@ import {
   Cell,
   ReferenceLine,
 } from "recharts";
-import { RefreshCw, ChevronDown, ChevronUp, AlertTriangle, Check, X } from "lucide-react";
+import { RefreshCw, ChevronDown, ChevronUp, AlertTriangle, Check, X, Star } from "lucide-react";
 import { COLORS } from "../lib/colors";
 import { fmtBRL, fmtFloat } from "../lib/tradeUpMath";
 import { rarityColor } from "../lib/rarity";
+import { loadFavoriteSuggestions, saveFavoriteSuggestions, suggestionKey } from "../lib/favorites";
 import { getSuggestions, syncAllCollections, getSyncAllStatus } from "../lib/api";
 import SuggestionsTooltip from "./SuggestionsTooltip";
 import ItemThumb from "./ItemThumb";
@@ -38,8 +39,18 @@ export default function Suggestions() {
   const [expandedIdx, setExpandedIdx] = useState(null);
   const [calcOpenIdx, setCalcOpenIdx] = useState(null);
   const [syncStatus, setSyncStatus] = useState(null);
+  const [favorites, setFavorites] = useState(() => loadFavoriteSuggestions());
   const statusPollRef = useRef(null);
   const reloadPollRef = useRef(null);
+
+  function toggleFavorite(key) {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      saveFavoriteSuggestions(next);
+      return next;
+    });
+  }
 
   useEffect(() => {
     load();
@@ -128,12 +139,16 @@ export default function Suggestions() {
     }
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...rows].sort((a, b) => {
+      const aFav = favorites.has(suggestionKey(a));
+      const bFav = favorites.has(suggestionKey(b));
+      if (aFav !== bFav) return aFav ? -1 : 1;
+
       const av = getSortValue(a, sort.key);
       const bv = getSortValue(b, sort.key);
       if (typeof av === "string") return dir * av.localeCompare(bv);
       return dir * (av - bv);
     });
-  }, [suggestions, stattrakFilter, textFilter, sort]);
+  }, [suggestions, stattrakFilter, textFilter, sort, favorites]);
 
   const scatterData = filtered.map((s, idx) => ({
     idx,
@@ -338,6 +353,7 @@ export default function Suggestions() {
                 <table className="tuc-table">
                   <thead>
                     <tr>
+                      <th></th>
                       <th style={{ cursor: "pointer" }} onClick={() => toggleSort("collectionName")}>Coleção</th>
                       <th>Raridade</th>
                       <th>ST</th>
@@ -358,6 +374,21 @@ export default function Suggestions() {
                           style={{ cursor: "pointer" }}
                           onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
                         >
+                          <td>
+                            <button
+                              className="tuc-icon-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFavorite(suggestionKey(s));
+                              }}
+                              aria-label="Favoritar"
+                              style={{
+                                color: favorites.has(suggestionKey(s)) ? COLORS.gold : COLORS.textDim,
+                              }}
+                            >
+                              <Star size={15} fill={favorites.has(suggestionKey(s)) ? COLORS.gold : "none"} />
+                            </button>
+                          </td>
                           <td style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                               {expandedIdx === idx ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
@@ -483,7 +514,7 @@ export default function Suggestions() {
                         </tr>
                         {expandedIdx === idx && (
                           <tr>
-                            <td colSpan={11} style={{ background: COLORS.panelAlt }}>
+                            <td colSpan={12} style={{ background: COLORS.panelAlt }}>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
                                 Valor esperado: {fmtBRL(s.stats.ev)} · Lucro esperado:{" "}
                                 {fmtBRL(s.stats.evProfit)} · {s.outcomeCount} saídas possíveis (1/
