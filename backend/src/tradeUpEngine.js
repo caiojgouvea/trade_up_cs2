@@ -503,6 +503,61 @@ function unitFloatMid(unit) {
   return assumedFloatForWear(unit.skin, unit.wear.exterior);
 }
 
+// Monta um "leg" pronto pro JSON de resposta a partir de uma unidade
+// (skin+wear) e sua contagem — usado tanto pra mistura dentro da mesma
+// coleção quanto pra coringa de outra coleção.
+function buildLeg(unit, count, stattrak, rate, collectionNames) {
+  return {
+    skinName: `${unit.skin.weapon} | ${unit.skin.skin}`,
+    wear: unit.wear.exterior,
+    count,
+    unitPriceBrl: (unit.wear.priceUsdCents / 100) * rate,
+    iconUrl: unit.skin.iconUrl,
+    floatRange: unit.skin.floatRange,
+    wearFloatRange: bandForWear(unit.skin, unit.wear.exterior),
+    isSouvenir: !!unit.isSouvenir,
+    collectionTag: unit.skin.collectionTag,
+    collectionName: collectionNames.get(unit.skin.collectionTag) ?? unit.skin.collectionTag,
+    marketHashName: marketHashName({
+      weapon: unit.skin.weapon,
+      skin: unit.skin.skin,
+      exterior: unit.wear.exterior,
+      stattrak: !!stattrak,
+      souvenir: !!unit.isSouvenir,
+    }),
+  };
+}
+
+// Constrói os outcomes de um contrato cujas unidades podem vir de MAIS DE
+// UMA coleção — regra oficial do jogo: a chance de a saída vir de uma
+// coleção é proporcional a quantos dos 10 inputs vieram dela; dentro da
+// coleção sorteada, a chance é igual entre as saídas elegíveis daquela
+// raridade. `groups` é um Map collectionTag -> { count, outputs }.
+function outcomesAcrossGroups(groups, avgFloat, stattrak, rate) {
+  const outcomes = [];
+  for (const { count, outputs } of groups.values()) {
+    if (!outputs.length) continue;
+    const probEach = ((count / 10) * 100) / outputs.length;
+    for (const o of outputs) {
+      const predicted = predictOutcomePrice(o, avgFloat, rate);
+      if (predicted.price == null) continue;
+      outcomes.push({
+        name: `${o.weapon} | ${o.skin}${stattrak ? " (StatTrak™)" : ""}`,
+        prob: probEach,
+        price: predicted.price,
+        predictedWear: predicted.wear,
+        priceIsEstimate: predicted.priceIsEstimate,
+        minListings: o.minListings,
+        iconUrl: o.iconUrl,
+        floatRange: o.floatRange,
+        wearPrices: wearPricesBrl(o, rate),
+        fromCollectionTag: o.collectionTag,
+      });
+    }
+  }
+  return outcomes;
+}
+
 // O "trade-up manipulado": em vez de comprar 10 unidades idênticas (a
 // entrada mais barata disponível), mistura DUAS unidades diferentes — podem
 // ser dois wears da mesma skin, ou skins diferentes da mesma
@@ -518,7 +573,7 @@ function unitFloatMid(unit) {
 // com 2 restrições, cujo ótimo contínuo sempre usa no máximo 2 variáveis
 // básicas — misturar um 3º tipo nunca compensa. As contagens são inteiras de
 // 1 a 9 pra cada lado (você compra 10 itens físicos, não frações).
-function bestManipulatedMix(inputUnits, outputs, rate) {
+function bestManipulatedMix(inputUnits, outputs, stattrak, rate) {
   const usable = inputUnits
     .map((u) => {
       const floatMid = unitFloatMid(u);
@@ -526,6 +581,8 @@ function bestManipulatedMix(inputUnits, outputs, rate) {
     })
     .filter(Boolean);
   if (usable.length < 2) return null;
+
+  const outputGroup = { count: 10, outputs };
 
   let best = null;
   for (const a of usable) {
@@ -537,29 +594,67 @@ function bestManipulatedMix(inputUnits, outputs, rate) {
         const costCents = countA * a.wear.priceUsdCents + countB * b.wear.priceUsdCents;
         const costBrl = (costCents / 100) * rate;
 
-        const outcomes = outputs
-          .map((o) => {
-            const predicted = predictOutcomePrice(o, avgFloat, rate);
-            return {
-              name: `${o.weapon} | ${o.skin}${o.stattrak ? " (StatTrak™)" : ""}`,
-              prob: 100 / outputs.length,
-              price: predicted.price,
-              predictedWear: predicted.wear,
-              priceIsEstimate: predicted.priceIsEstimate,
-              minListings: o.minListings,
-              iconUrl: o.iconUrl,
-              floatRange: o.floatRange,
-              wearPrices: wearPricesBrl(o, rate),
-            };
-          })
-          .filter((o) => o.price != null);
+        const outcomes = outcomesAcrossGroups(new Map([["_", outputGroup]]), avgFloat, stattrak, rate);
         if (!outcomes.length) continue;
 
         const stats = computeContractStats(costBrl, outcomes);
         if (!Number.isFinite(stats.roi)) continue;
 
         if (!best || stats.roi > best.stats.roi) {
-          best = { a, countA, b, countB, avgFloat, costBrl, outcomes, stats };
+          best = { a, countA, b, countB, avgFloat, costBrl, outcomes, stats, crossCollection: false };
+        }
+      }
+    }
+  }
+  return best;
+}
+
+// Variante "coringa": a maioria das 10 entradas continua sendo da coleção
+// principal (repetindo a unidade mais barata dela), mas um punhado vem de
+// OUTRA coleção só pra ajustar o float médio mais barato do que qualquer
+// combinação dentro da própria coleção permite. Isso é uma troca real: o
+// jogo sorteia a saída proporcional a quantos dos 10 vieram de cada
+// coleção, então usar coringas dilui parte da chance pra outputs da
+// coleção do coringa — por isso só compensa quando o ganho de custo supera
+// isso, e o resultado deixa claro de onde cada saída possível vem.
+function bestCrossCollectionMix(primaryUnits, primaryCollectionTag, primaryOutputs, wildcardUnits, stattrak, rate) {
+  const primaryWithFloat = primaryUnits
+    .map((u) => {
+      const floatMid = unitFloatMid(u);
+      return floatMid != null ? { ...u, floatMid } : null;
+    })
+    .filter(Boolean);
+  if (!primaryWithFloat.length || !wildcardUnits.length) return null;
+
+  let best = null;
+  for (const p of primaryWithFloat) {
+    for (const w of wildcardUnits) {
+      if (w.skin.collectionTag === primaryCollectionTag) continue;
+      const lo = p.floatMid <= w.floatMid ? p : w;
+      const hi = p.floatMid <= w.floatMid ? w : p;
+      if (lo.floatMid === hi.floatMid) continue;
+
+      for (let countHi = 1; countHi <= 9; countHi++) {
+        const countLo = 10 - countHi;
+        const avgFloat = (countLo * lo.floatMid + countHi * hi.floatMid) / 10;
+        const countP = lo === p ? countLo : countHi;
+        const countW = 10 - countP;
+        const costCents = countP * p.wear.priceUsdCents + countW * w.wear.priceUsdCents;
+        const costBrl = (costCents / 100) * rate;
+
+        const wildcardOutputs = w.outputs;
+        const groups = new Map([
+          [primaryCollectionTag, { count: countP, outputs: primaryOutputs }],
+          [w.skin.collectionTag, { count: countW, outputs: wildcardOutputs }],
+        ]);
+        const outcomes = outcomesAcrossGroups(groups, avgFloat, stattrak, rate);
+        if (!outcomes.length) continue;
+
+        const stats = computeContractStats(costBrl, outcomes);
+        if (!Number.isFinite(stats.roi)) continue;
+
+        if (!best || stats.roi > best.stats.roi) {
+          best = { p, countP, w, countW, avgFloat, costBrl, outcomes, stats, crossCollection: true };
         }
       }
     }
@@ -569,29 +664,67 @@ function bestManipulatedMix(inputUnits, outputs, rate) {
 
 // Sugestões de trade-up "manipulado": mesma base de dados e mesmo piso de
 // liquidez de computeSingleCollectionSuggestions, mas em vez de fixar a
-// entrada mais barata repetida 10x, testa misturas de 2 unidades diferentes
-// pra ver se dá pra pilotar o float médio pra uma saída mais barata de
-// atingir. Só entra na lista se render ROI melhor que a estratégia uniforme
-// (a maioria das coleções não ganha nada misturando — o sinal fica só nos
-// casos em que realmente compensa).
+// entrada mais barata repetida 10x, testa (1) misturas de 2 unidades da
+// mesma coleção e (2) misturas com um "coringa" de outra coleção, pra ver
+// se dá pra pilotar o float médio pra uma saída mais barata de atingir. Só
+// entra na lista se render ROI melhor que a estratégia uniforme (a maioria
+// das coleções não ganha nada misturando — o sinal fica só nos casos em que
+// realmente compensa).
 export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
   const { rate, menu, souvenirMenu, collectionNames } = await buildInputMenu(minListings);
 
   const suggestions = [];
 
-  for (const [collectionTag, byRarity] of menu) {
-    for (let i = 0; i < RARITY_ORDER.length - 1; i++) {
-      const tier = RARITY_ORDER[i];
-      const nextTier = RARITY_ORDER[i + 1];
-      const tierMenu = byRarity.get(tier);
-      const nextMenu = byRarity.get(nextTier);
-      if (!nextMenu) continue;
+  for (let i = 0; i < RARITY_ORDER.length - 1; i++) {
+    const tier = RARITY_ORDER[i];
+    const nextTier = RARITY_ORDER[i + 1];
 
-      for (const stattrak of [0, 1]) {
-        const inputs = tierMenu?.[stattrak];
-        const outputs = nextMenu[stattrak];
-        if (!outputs?.length) continue;
+    for (const stattrak of [0, 1]) {
+      const outputsFor = (collectionTag) => menu.get(collectionTag)?.get(nextTier)?.[stattrak] ?? [];
 
+      // Pool de coringas pra esse tier+stattrak: unidades de QUALQUER
+      // coleção cuja PRÓPRIA coleção tenha saída válida na raridade
+      // seguinte (senão não dá pra prever preço daquela fração da chance).
+      // Restrito aos mais extremos em float relativo (bem baixo ou bem
+      // alto) — são esses que valem a pena trazer de fora só pra ajustar o
+      // float; testar toda unidade de toda coleção contra toda coleção
+      // seria caro demais e a maioria não ajudaria em nada.
+      const allUnitsThisTier = [];
+      for (const [collectionTag, byRarity] of menu) {
+        const outputs = outputsFor(collectionTag);
+        if (!outputs.length) continue;
+        const skinsAtTier = byRarity.get(tier)?.[stattrak] ?? [];
+        for (const s of skinsAtTier) {
+          for (const w of s.wears) {
+            if (w.priceUsdCents == null) continue;
+            allUnitsThisTier.push({ skin: s, wear: w, outputs });
+          }
+        }
+        if (stattrak === 0) {
+          for (const u of souvenirInputUnits(souvenirMenu, collectionTag, tier)) {
+            allUnitsThisTier.push({ ...u, outputs });
+          }
+        }
+      }
+      const withFloat = allUnitsThisTier
+        .map((u) => {
+          const floatMid = unitFloatMid(u);
+          return floatMid != null ? { ...u, floatMid } : null;
+        })
+        .filter(Boolean);
+      const lowFloat = [...withFloat]
+        .sort((a, b) => a.floatMid - b.floatMid || a.wear.priceUsdCents - b.wear.priceUsdCents)
+        .slice(0, 15);
+      const highFloat = [...withFloat]
+        .sort((a, b) => b.floatMid - a.floatMid || a.wear.priceUsdCents - b.wear.priceUsdCents)
+        .slice(0, 15);
+      const wildcardPool = [...lowFloat, ...highFloat];
+
+      for (const [collectionTag, byRarity] of menu) {
+        const outputs = outputsFor(collectionTag);
+        if (!outputs.length) continue;
+
+        const inputs = byRarity.get(tier)?.[stattrak];
         const inputUnits = [];
         for (const s of inputs ?? []) {
           for (const w of s.wears) {
@@ -599,12 +732,12 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
             inputUnits.push({ skin: s, wear: w });
           }
         }
-        // Lembrança pode ser uma das duas pernas da mistura também (mesma
-        // regra do lado uniforme: só entra no Normal, nunca StatTrak).
+        // Lembrança pode ser uma das pernas da mistura também (mesma regra
+        // do lado uniforme: só entra no Normal, nunca StatTrak).
         if (stattrak === 0) {
           inputUnits.push(...souvenirInputUnits(souvenirMenu, collectionTag, tier));
         }
-        if (inputUnits.length < 2) continue;
+        if (!inputUnits.length) continue;
 
         // Baseline pra comparação: a mesma estratégia uniforme (10x a
         // entrada mais barata) de computeSingleCollectionSuggestions.
@@ -613,20 +746,40 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
         );
         const baselineCostBrl = (cheapestUnit.wear.priceUsdCents / 100) * rate * 10;
         const baselineAvgFloat = assumedFloatForWear(cheapestUnit.skin, cheapestUnit.wear.exterior);
-        const baselineOutcomes = outputs
-          .map((o) => predictOutcomePrice(o, baselineAvgFloat, rate))
-          .filter((p) => p.price != null)
-          .map((p) => ({ prob: 100 / outputs.length, price: p.price }));
+        const baselineOutcomes = outcomesAcrossGroups(
+          new Map([["_", { count: 10, outputs }]]),
+          baselineAvgFloat,
+          stattrak,
+          rate
+        );
         const baselineStats = baselineOutcomes.length
           ? computeContractStats(baselineCostBrl, baselineOutcomes)
           : null;
 
-        const mix = bestManipulatedMix(inputUnits, outputs, rate);
+        const sameCollectionMix =
+          inputUnits.length >= 2 ? bestManipulatedMix(inputUnits, outputs, stattrak, rate) : null;
+        const crossMix = bestCrossCollectionMix(
+          inputUnits,
+          collectionTag,
+          outputs,
+          wildcardPool.filter((u) => u.skin.collectionTag !== collectionTag),
+          stattrak,
+          rate
+        );
+
+        const mix = [sameCollectionMix, crossMix]
+          .filter(Boolean)
+          .reduce((best, m) => (!best || m.stats.roi > best.stats.roi ? m : best), null);
         if (!mix) continue;
 
         // Só vale a pena mostrar se a mistura bate a estratégia uniforme por
         // uma margem real — senão é só ruído numérico.
         if (baselineStats && mix.stats.roi <= baselineStats.roi + 0.5) continue;
+
+        const legA = mix.crossCollection ? mix.p : mix.a;
+        const countA = mix.crossCollection ? mix.countP : mix.countA;
+        const legB = mix.crossCollection ? mix.w : mix.b;
+        const countB = mix.crossCollection ? mix.countW : mix.countB;
 
         suggestions.push({
           collectionTag,
@@ -634,41 +787,10 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
           tier,
           nextTier,
           stattrak: !!stattrak,
+          crossCollection: mix.crossCollection,
           legs: [
-            {
-              skinName: `${mix.a.skin.weapon} | ${mix.a.skin.skin}`,
-              wear: mix.a.wear.exterior,
-              count: mix.countA,
-              unitPriceBrl: (mix.a.wear.priceUsdCents / 100) * rate,
-              iconUrl: mix.a.skin.iconUrl,
-              floatRange: mix.a.skin.floatRange,
-              wearFloatRange: bandForWear(mix.a.skin, mix.a.wear.exterior),
-              isSouvenir: !!mix.a.isSouvenir,
-              marketHashName: marketHashName({
-                weapon: mix.a.skin.weapon,
-                skin: mix.a.skin.skin,
-                exterior: mix.a.wear.exterior,
-                stattrak: !!stattrak,
-                souvenir: !!mix.a.isSouvenir,
-              }),
-            },
-            {
-              skinName: `${mix.b.skin.weapon} | ${mix.b.skin.skin}`,
-              wear: mix.b.wear.exterior,
-              count: mix.countB,
-              unitPriceBrl: (mix.b.wear.priceUsdCents / 100) * rate,
-              iconUrl: mix.b.skin.iconUrl,
-              floatRange: mix.b.skin.floatRange,
-              wearFloatRange: bandForWear(mix.b.skin, mix.b.wear.exterior),
-              isSouvenir: !!mix.b.isSouvenir,
-              marketHashName: marketHashName({
-                weapon: mix.b.skin.weapon,
-                skin: mix.b.skin.skin,
-                exterior: mix.b.wear.exterior,
-                stattrak: !!stattrak,
-                souvenir: !!mix.b.isSouvenir,
-              }),
-            },
+            buildLeg(legA, countA, stattrak, rate, collectionNames),
+            buildLeg(legB, countB, stattrak, rate, collectionNames),
           ],
           assumedAvgFloat: mix.avgFloat,
           cost: mix.costBrl,

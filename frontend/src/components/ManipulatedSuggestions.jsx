@@ -283,6 +283,22 @@ export default function ManipulatedSuggestions() {
                             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                               {expandedIdx === idx ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                               {s.collectionName}
+                              {s.crossCollection && (
+                                <span
+                                  title="Usa coringa de outra coleção pra ajustar o float — parte da chance de saída vem dessa outra coleção"
+                                  style={{
+                                    fontSize: 9,
+                                    fontWeight: 600,
+                                    color: COLORS.rust,
+                                    border: `1px solid ${COLORS.rust}`,
+                                    borderRadius: 4,
+                                    padding: "1px 5px",
+                                    textTransform: "uppercase",
+                                  }}
+                                >
+                                  Cross-coleção
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td style={{ fontSize: 11 }}>
@@ -301,6 +317,9 @@ export default function ManipulatedSuggestions() {
                                   <span>
                                     {l.count}x {l.isSouvenir && <span style={{ color: COLORS.gold }}>Lembrança </span>}
                                     {l.skinName} <span style={{ color: COLORS.textDim }}>({l.wear})</span>
+                                    {l.collectionTag !== s.collectionTag && (
+                                      <span style={{ color: COLORS.rust }}> — coringa ({l.collectionName})</span>
+                                    )}
                                   </span>
                                   <a
                                     href={steamMarketUrl(l.marketHashName)}
@@ -374,6 +393,9 @@ export default function ManipulatedSuggestions() {
                                         {o.priceIsEstimate ? "≈" : ""})
                                       </span>
                                     )}
+                                    {o.fromCollectionTag !== s.collectionTag && (
+                                      <span style={{ color: COLORS.rust }}> · outra coleção</span>
+                                    )}
                                   </span>
                                 </div>
                               ))}
@@ -391,8 +413,8 @@ export default function ManipulatedSuggestions() {
                             <td colSpan={11} style={{ background: COLORS.panelAlt }}>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
                                 Valor esperado: {fmtBRL(s.stats.ev)} · Lucro esperado:{" "}
-                                {fmtBRL(s.stats.evProfit)} · {s.outcomeCount} saídas possíveis (1/
-                                {s.outcomeCount} de chance cada)
+                                {fmtBRL(s.stats.evProfit)} · {s.outcomeCount} saídas possíveis
+                                {!s.crossCollection && <> (1/{s.outcomeCount} de chance cada)</>}
                               </div>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 10 }}>
                                 Mistura: {s.legs.map((l) => `${l.count}x ${l.isSouvenir ? "Lembrança " : ""}${l.skinName} (${l.wear})`).join(" + ")}{" "}
@@ -405,6 +427,26 @@ export default function ManipulatedSuggestions() {
                                   {s.stats.roi.toFixed(1)}% misturando</>
                                 )}.
                               </div>
+                              {s.crossCollection && (
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    color: COLORS.text,
+                                    marginBottom: 10,
+                                    padding: "8px 10px",
+                                    borderRadius: 6,
+                                    border: `1px solid ${COLORS.rust}`,
+                                  }}
+                                >
+                                  <strong style={{ color: COLORS.rust }}>Cross-coleção:</strong> uma das
+                                  pernas é de <strong>{s.legs.find((l) => l.collectionTag !== s.collectionTag)?.collectionName}</strong>,
+                                  não de {s.collectionName}. O jogo sorteia a saída proporcional a quantos
+                                  dos 10 itens vieram de cada coleção — então parte real da chance (marcada
+                                  como "outra coleção" abaixo) sai de lá, não de {s.collectionName}. Isso é
+                                  esperado, não um erro: é a troca que faz o float ficar mais barato de
+                                  atingir.
+                                </div>
+                              )}
                               <div
                                 style={{
                                   display: "flex",
@@ -481,6 +523,11 @@ export default function ManipulatedSuggestions() {
                                     <span style={{ color: o.priceIsEstimate ? COLORS.gold : COLORS.textDim }}>
                                       ({wearLabel(o)})
                                     </span>
+                                    {o.fromCollectionTag !== s.collectionTag && (
+                                      <span style={{ color: COLORS.rust, fontSize: 10 }}>
+                                        outra coleção ({s.legs.find((l) => l.collectionTag === o.fromCollectionTag)?.collectionName})
+                                      </span>
+                                    )}
                                   </span>
                                   <span style={{ color: COLORS.textDim, whiteSpace: "nowrap" }}>
                                     {o.prob.toFixed(1)}% · {fmtBRL(o.price)} · {o.minListings} anúncios
