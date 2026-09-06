@@ -2,7 +2,13 @@ import { db } from "./db.js";
 import { getUsdToBrlRate } from "./fx.js";
 import { RARITY_ORDER } from "./rarity.js";
 import { getFloatRangeMap } from "./floatData.js";
-import { clippedBands, requiredAvgFloatRange, rangesOverlap, outputFloatFromAvg } from "./floatMath.js";
+import {
+  clippedBands,
+  requiredAvgFloatRange,
+  rangesOverlap,
+  outputFloatFromAvg,
+  normalizeFloat,
+} from "./floatMath.js";
 
 // Mesma fórmula de src/lib/tradeUpMath.js do frontend — duplicada de
 // propósito (é pouca lógica, e mantém backend/frontend independentes).
@@ -92,6 +98,21 @@ function marketHashName({ weapon, skin, exterior, stattrak }) {
 
 function priceForWear(skinGroup, exterior) {
   return skinGroup.wears.find((w) => w.exterior === exterior)?.priceUsdCents ?? null;
+}
+
+// O float médio que entra na fórmula de trade-up é RELATIVO (normalizado
+// 0–1 pela faixa própria de CADA skin de entrada), não o float bruto — ver
+// normalizeFloat em floatMath.js. Sem isso, uma skin com faixa estreita
+// (ex: 0–0.5) tem seu desgaste relativo subestimado pela metade, o que
+// explica saídas "piores que o esperado" mesmo comprando Factory New.
+// Pega o meio (bruto) da banda de wear escolhida — já recortada pelo
+// min/max real da skin — e normaliza pra essa mesma faixa.
+function assumedFloatForWear(skinGroup, exterior) {
+  if (!skinGroup.floatRange) return null;
+  const band = bandForWear(skinGroup, exterior);
+  if (!band) return null;
+  const rawMid = (band.min + band.max) / 2;
+  return normalizeFloat(rawMid, skinGroup.floatRange.min, skinGroup.floatRange.max);
 }
 
 // Quando o wear previsto não tem preço confiável, o vizinho mais próximo (por
@@ -210,8 +231,17 @@ function computeFloatGuidance({ cheapestInput, outputs, rate }) {
   if (inputWear && cheapestInput.floatRange) {
     const inBand = bandForWear(cheapestInput, inputWear.exterior);
     if (inBand) {
+      // inputAchievable fica em float BRUTO (é o que aparece na tela, o
+      // float real do item que você compraria). A checagem de viabilidade
+      // precisa comparar em espaço RELATIVO (normalizado pela faixa própria
+      // dessa skin de entrada) contra `required`, que já é relativo — ver
+      // normalizeFloat em floatMath.js.
       inputAchievable = { min: inBand.min, max: inBand.max };
-      feasible = rangesOverlap(inputAchievable, required);
+      const achievableAdjusted = {
+        min: normalizeFloat(inBand.min, cheapestInput.floatRange.min, cheapestInput.floatRange.max),
+        max: normalizeFloat(inBand.max, cheapestInput.floatRange.min, cheapestInput.floatRange.max),
+      };
+      feasible = rangesOverlap(achievableAdjusted, required);
     }
   }
 
@@ -330,13 +360,9 @@ export async function computeSingleCollectionSuggestions({ minListings = 10 } = 
         const costBrl = (cheapestUnit.wear.priceUsdCents / 100) * rate * 10;
 
         // Float médio assumido = meio da faixa do wear que você realmente
-        // compraria (a entrada mais barata). Sem isso, cai pro método antigo
-        // (média entre wears) só pra essa skin de entrada específica.
-        let assumedAvgFloat = null;
-        if (cheapestUnit.skin.floatRange) {
-          const inBand = bandForWear(cheapestUnit.skin, cheapestUnit.wear.exterior);
-          if (inBand) assumedAvgFloat = (inBand.min + inBand.max) / 2;
-        }
+        // compraria (a entrada mais barata), normalizado pela faixa própria
+        // dessa skin (ver assumedFloatForWear) — não o float bruto.
+        const assumedAvgFloat = assumedFloatForWear(cheapestUnit.skin, cheapestUnit.wear.exterior);
 
         const outcomes = outputs
           .map((o) => {
@@ -371,6 +397,11 @@ export async function computeSingleCollectionSuggestions({ minListings = 10 } = 
           inputWear: cheapestUnit.wear.exterior,
           inputIconUrl: cheapestUnit.skin.iconUrl,
           inputListings: cheapestUnit.wear.sellListings,
+          // Faixa de float PRÓPRIA dessa skin de entrada — a calculadora de
+          // float no front precisa disso pra normalizar os floats brutos que
+          // o usuário digita (ver normalizeFloat em floatMath.js). Sem isso
+          // ela erra pra qualquer skin cuja faixa não seja 0–1 inteira.
+          inputFloatRange: cheapestUnit.skin.floatRange,
           assumedAvgFloat,
           cost: costBrl,
           outcomeCount: outcomes.length,
@@ -387,13 +418,13 @@ export async function computeSingleCollectionSuggestions({ minListings = 10 } = 
   return { rate, suggestions };
 }
 
-// Float médio (meio da faixa de wear) de uma unidade compráveis específica
-// (skin+wear). Usa a mesma aproximação já usada no resto do arquivo — não
-// conhecemos o float exato de cada anúncio, só a faixa do wear.
+// Float médio RELATIVO (normalizado pela faixa própria da skin, ver
+// assumedFloatForWear) de uma unidade comprável específica (skin+wear).
+// Crítico aqui especificamente: ao misturar unidades de skins DIFERENTES,
+// a média só faz sentido físico em espaço relativo — misturar floats brutos
+// de duas skins com faixas próprias diferentes dá um número sem significado.
 function unitFloatMid(unit) {
-  if (!unit.skin.floatRange) return null;
-  const band = bandForWear(unit.skin, unit.wear.exterior);
-  return band ? (band.min + band.max) / 2 : null;
+  return assumedFloatForWear(unit.skin, unit.wear.exterior);
 }
 
 // O "trade-up manipulado": em vez de comprar 10 unidades idênticas (a
@@ -500,11 +531,7 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
           u.wear.priceUsdCents < min.wear.priceUsdCents ? u : min
         );
         const baselineCostBrl = (cheapestUnit.wear.priceUsdCents / 100) * rate * 10;
-        let baselineAvgFloat = null;
-        if (cheapestUnit.skin.floatRange) {
-          const band = bandForWear(cheapestUnit.skin, cheapestUnit.wear.exterior);
-          if (band) baselineAvgFloat = (band.min + band.max) / 2;
-        }
+        const baselineAvgFloat = assumedFloatForWear(cheapestUnit.skin, cheapestUnit.wear.exterior);
         const baselineOutcomes = outputs
           .map((o) => predictOutcomePrice(o, baselineAvgFloat, rate))
           .filter((p) => p.price != null)
@@ -676,11 +703,7 @@ export async function getCollectionOutcomeMenu(collectionTag) {
       for (const inSkin of inputSkins ?? []) {
         for (const w of inSkin.wears) {
           if (w.priceUsdCents == null) continue;
-          let assumedAvgFloat = null;
-          if (inSkin.floatRange) {
-            const band = bandForWear(inSkin, w.exterior);
-            if (band) assumedAvgFloat = (band.min + band.max) / 2;
-          }
+          const assumedAvgFloat = assumedFloatForWear(inSkin, w.exterior);
           const outcomes = outputSkins
             .map((o) => {
               const predicted = predictOutcomePrice(o, assumedAvgFloat, rate);

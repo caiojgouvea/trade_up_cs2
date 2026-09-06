@@ -17,15 +17,32 @@ export function clippedBands(skinMin, skinMax) {
   })).filter((b) => b.max > b.min);
 }
 
-// Fórmula oficial de trade-up: o float de saída é a média (bruta, 0–1) dos
-// floats dos 10 inputs, mapeada proporcionalmente entre o min/max da skin de
-// saída. Não é sorteio — é determinístico a partir do float médio de entrada.
+// Normaliza um float bruto (absoluto, ex: 0.035) pra a posição relativa
+// (0–1) dentro da faixa própria daquela skin específica. ESSENCIAL: a fórmula
+// de trade-up não usa o float bruto dos inputs — usa essa posição relativa.
+// Duas skins com o mesmo float bruto podem ter "desgaste relativo" bem
+// diferente se uma cobre 0–1 e a outra só cobre, por exemplo, 0–0.5: um float
+// bruto de 0.065 é 6.5% do caminho pra uma, mas 13% pra outra.
+export function normalizeFloat(rawFloat, skinMin, skinMax) {
+  if (skinMax === skinMin) return 0;
+  return (rawFloat - skinMin) / (skinMax - skinMin);
+}
+
+// Fórmula oficial de trade-up: o float de saída é a MÉDIA DO FLOAT RELATIVO
+// (normalizado 0–1 pela faixa própria de cada input — ver normalizeFloat)
+// dos 10 inputs, mapeada proporcionalmente entre o min/max da skin de saída.
+// Não é sorteio — é determinístico a partir desse float médio relativo.
+// `avgInputFloat` aqui já deve vir normalizado (ver normalizeFloat) — nunca
+// passar float bruto direto, exceto quando a skin de entrada cobre 0–1
+// inteiro (nesse caso bruto e normalizado coincidem).
 export function outputFloatFromAvg(avgInputFloat, skinMin, skinMax) {
   return skinMin + avgInputFloat * (skinMax - skinMin);
 }
 
-// Inverso da fórmula acima: dado um float de saída desejado (ou faixa),
-// qual float médio de entrada (bruto, 0–1) é necessário.
+// Inverso da fórmula acima: dado um float de saída desejado (ou faixa), qual
+// float médio de entrada RELATIVO (normalizado 0–1, ver normalizeFloat) é
+// necessário — pra comparar com o que um input específico alcança, ainda
+// precisa normalizar o float bruto desse input antes de comparar.
 export function requiredAvgFloatForOutput(outputFloat, skinMin, skinMax) {
   if (skinMax === skinMin) return skinMin;
   return (outputFloat - skinMin) / (skinMax - skinMin);

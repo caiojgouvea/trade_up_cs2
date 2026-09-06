@@ -6,6 +6,22 @@ export function outputFloatFromAvg(avgInputFloat, min, max) {
   return min + avgInputFloat * (max - min);
 }
 
+// Converte um float BRUTO (o número real que você vê inspecionando o item,
+// ex: 0.028772375) pra posição RELATIVA (0–1) dentro da faixa própria da
+// skin de entrada. A fórmula de trade-up usa essa posição relativa, não o
+// float bruto — sem isso, uma skin de entrada cuja faixa não é 0–1 inteira
+// (a maioria não é) dá uma média completamente errada.
+export function normalizeFloat(rawFloat, min, max) {
+  if (max === min) return 0;
+  return (rawFloat - min) / (max - min);
+}
+
+// Inverso: de uma posição relativa (0–1) de volta pro float bruto daquela
+// mesma skin de entrada.
+export function denormalizeFloat(adjusted, min, max) {
+  return min + adjusted * (max - min);
+}
+
 export function findBand(bands, floatValue) {
   return bands.find((b) => floatValue >= b.min && floatValue <= b.max) ?? null;
 }

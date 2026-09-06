@@ -588,6 +588,7 @@ export default function Suggestions() {
                                 <FloatCalculator
                                   outcomes={s.outcomes}
                                   defaultOutcomeName={s.floatInfo?.bestOutcomeName}
+                                  inputFloatRange={s.inputFloatRange}
                                 />
                               )}
                               {s.outcomes.map((o, i) => (
