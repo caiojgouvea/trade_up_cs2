@@ -192,7 +192,15 @@ const REAL_COLLECTION_FILTER = "collection_tag IN (SELECT tag FROM collections W
 // Gera sugestões de trade-up de UMA coleção só (o tipo clássico: 10 skins da
 // mesma coleção e raridade). Trade-ups misturando coleções ficam pra uma
 // próxima etapa (o espaço de busca cresce muito mais).
-export async function computeSingleCollectionSuggestions({ minListings = 5 } = {}) {
+//
+// minListings é um piso RÍGIDO, não uma preferência: um wear com menos
+// anúncios ativos que isso não entra na conta nem como entrada nem como
+// saída. Motivo duplo — (1) pra entrada, você literalmente não consegue
+// comprar 10 unidades se não tem 10+ anunciadas; (2) pro preço em si, com
+// pouquíssimos anúncios o "menor preço" do Steam não é confiável (pode ser
+// um vendedor patinho fora da curva), e ROIs de centenas de % baseados
+// nisso já apareceram na prática usando só 2 anúncios.
+export async function computeSingleCollectionSuggestions({ minListings = 10 } = {}) {
   const rate = await getUsdToBrlRate(db);
   const floatMap = getFloatRangeMap();
 
@@ -208,7 +216,8 @@ export async function computeSingleCollectionSuggestions({ minListings = 5 } = {
          AND price_usd_cents IS NOT NULL
          AND ${REAL_COLLECTION_FILTER}`
     )
-    .all();
+    .all()
+    .filter((r) => (r.sell_listings ?? 0) >= minListings);
 
   const skins = groupIntoSkins(rows, floatMap);
 
@@ -243,7 +252,8 @@ export async function computeSingleCollectionSuggestions({ minListings = 5 } = {
         if (!inputs?.length || !outputs?.length) continue;
 
         // Unidades realmente compráveis: cada skin+wear específico com
-        // preço, não a média da skin (você não compra "a média").
+        // preço, não a média da skin (você não compra "a média"). Já vêm só
+        // com liquidez suficiente, porque `rows` já foi filtrado acima.
         const inputUnits = [];
         for (const s of inputs) {
           for (const w of s.wears) {
@@ -253,9 +263,7 @@ export async function computeSingleCollectionSuggestions({ minListings = 5 } = {
         }
         if (!inputUnits.length) continue;
 
-        const liquidUnits = inputUnits.filter((u) => u.wear.sellListings >= minListings);
-        const unitPool = liquidUnits.length ? liquidUnits : inputUnits;
-        const cheapestUnit = unitPool.reduce((min, u) =>
+        const cheapestUnit = inputUnits.reduce((min, u) =>
           u.wear.priceUsdCents < min.wear.priceUsdCents ? u : min
         );
 
@@ -302,7 +310,6 @@ export async function computeSingleCollectionSuggestions({ minListings = 5 } = {
           inputWear: cheapestUnit.wear.exterior,
           inputIconUrl: cheapestUnit.skin.iconUrl,
           inputListings: cheapestUnit.wear.sellListings,
-          inputLiquidityWarning: !liquidUnits.length,
           assumedAvgFloat,
           cost: costBrl,
           outcomeCount: outcomes.length,
@@ -339,6 +346,9 @@ export async function getCollectionOutcomeMenu(collectionTag) {
 
   const floatMap = getFloatRangeMap();
 
+  // Mesmo piso de liquidez de computeSingleCollectionSuggestions (ver
+  // comentário lá) — sem isso, a pré-visualização por item podia previr uma
+  // saída caríssima sustentada por 1-2 anúncios só.
   const rows = db
     .prepare(
       `SELECT collection_tag, rarity, stattrak, weapon, skin, exterior, icon_url, price_usd_cents, sell_listings
@@ -351,7 +361,8 @@ export async function getCollectionOutcomeMenu(collectionTag) {
          AND rarity IS NOT NULL
          AND price_usd_cents IS NOT NULL`
     )
-    .all(collectionTag);
+    .all(collectionTag)
+    .filter((r) => (r.sell_listings ?? 0) >= 10);
 
   const skins = groupIntoSkins(rows, floatMap).filter((s) => s.avgUsdCents != null);
 

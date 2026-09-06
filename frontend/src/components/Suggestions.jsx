@@ -11,7 +11,7 @@ import {
   Cell,
   ReferenceLine,
 } from "recharts";
-import { RefreshCw, ChevronDown, ChevronUp, AlertTriangle, Check, X, Star } from "lucide-react";
+import { RefreshCw, ChevronDown, ChevronUp, Check, X, Star } from "lucide-react";
 import { COLORS } from "../lib/colors";
 import { fmtBRL, fmtFloat } from "../lib/tradeUpMath";
 import { rarityColor } from "../lib/rarity";
@@ -32,7 +32,7 @@ export default function Suggestions() {
   const [rate, setRate] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [minListings, setMinListings] = useState(5);
+  const [minListings, setMinListings] = useState(10);
   const [stattrakFilter, setStattrakFilter] = useState("all");
   const [textFilter, setTextFilter] = useState("");
   const [sort, setSort] = useState({ key: "stats.roi", dir: "desc" });
@@ -410,13 +410,6 @@ export default function Suggestions() {
                                 {s.inputSkin}
                                 {s.inputWear && (
                                   <span style={{ color: COLORS.textDim }}> ({s.inputWear})</span>
-                                )}
-                                {s.inputLiquidityWarning && (
-                                  <AlertTriangle
-                                    size={11}
-                                    color={COLORS.gold}
-                                    style={{ marginLeft: 4, verticalAlign: "middle" }}
-                                  />
                                 )}
                               </span>
                             </div>
