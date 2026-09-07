@@ -43,6 +43,8 @@ export default function ManipulatedSuggestions() {
   const [textFilter, setTextFilter] = useState("");
   const [minCost, setMinCost] = useState("");
   const [maxCost, setMaxCost] = useState("");
+  const [minRisk, setMinRisk] = useState("");
+  const [maxRisk, setMaxRisk] = useState("");
   const [sort, setSort] = useState({ key: "stats.roi", dir: "desc" });
   const [expandedIdx, setExpandedIdx] = useState(null);
   const [calcOpenIdx, setCalcOpenIdx] = useState(null);
@@ -135,6 +137,8 @@ export default function ManipulatedSuggestions() {
     const q = textFilter.trim().toLowerCase();
     const min = minCost.trim() === "" ? null : Number(minCost.replace(",", "."));
     const max = maxCost.trim() === "" ? null : Number(maxCost.replace(",", "."));
+    const riskMin = minRisk.trim() === "" ? null : Number(minRisk.replace(",", "."));
+    const riskMax = maxRisk.trim() === "" ? null : Number(maxRisk.replace(",", "."));
     let rows = suggestions;
     if (stattrakFilter !== "all") {
       const want = stattrakFilter === "stattrak";
@@ -149,6 +153,8 @@ export default function ManipulatedSuggestions() {
         (s) => s.outcomes.length === 2 && s.outcomes.every((o) => Math.abs(Number(o.prob) - 50) < 0.01)
       );
     }
+    if (riskMin != null && !isNaN(riskMin)) rows = rows.filter((s) => s.stats.probLoss >= riskMin);
+    if (riskMax != null && !isNaN(riskMax)) rows = rows.filter((s) => s.stats.probLoss <= riskMax);
     if (q) {
       rows = rows.filter(
         (s) =>
@@ -170,11 +176,11 @@ export default function ManipulatedSuggestions() {
       if (typeof av === "string") return dir * av.localeCompare(bv);
       return dir * (av - bv);
     });
-  }, [suggestions, stattrakFilter, rarityFilter, riskFilter, textFilter, minCost, maxCost, sort, favorites]);
+  }, [suggestions, stattrakFilter, rarityFilter, riskFilter, textFilter, minCost, maxCost, minRisk, maxRisk, sort, favorites]);
 
   // Volta pra página 1 quando filtro/ordenação/dataset muda, sem useEffect —
   // ajusta durante o render em vez de disparar outro ciclo de commit.
-  const filterSignature = `${stattrakFilter}|${rarityFilter}|${riskFilter}|${textFilter}|${minCost}|${maxCost}|${sort.key}|${sort.dir}`;
+  const filterSignature = `${stattrakFilter}|${rarityFilter}|${riskFilter}|${textFilter}|${minCost}|${maxCost}|${minRisk}|${maxRisk}|${sort.key}|${sort.dir}`;
   const prevFilterSignatureRef = useRef(filterSignature);
   const prevSuggestionsRef = useRef(suggestions);
   if (prevFilterSignatureRef.current !== filterSignature || prevSuggestionsRef.current !== suggestions) {
@@ -387,6 +393,24 @@ export default function ManipulatedSuggestions() {
               placeholder="máx."
               value={maxCost}
               onChange={(e) => setMaxCost(e.target.value)}
+            />
+          </label>
+          <label style={{ fontSize: 11, color: COLORS.textDim, display: "flex", alignItems: "center", gap: 6 }}>
+            Risco %
+            <input
+              className="tuc-input"
+              style={{ width: 60 }}
+              placeholder="mín."
+              value={minRisk}
+              onChange={(e) => setMinRisk(e.target.value)}
+            />
+            <span>–</span>
+            <input
+              className="tuc-input"
+              style={{ width: 60 }}
+              placeholder="máx."
+              value={maxRisk}
+              onChange={(e) => setMaxRisk(e.target.value)}
             />
           </label>
           {rate && (
