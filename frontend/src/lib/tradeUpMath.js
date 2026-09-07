@@ -90,11 +90,11 @@ export function computeStats(contract) {
 }
 
 export function fmtBRL(n) {
-  if (!isFinite(n)) return "—";
+  if (n == null || !isFinite(n)) return "—";
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 export function fmtFloat(n) {
-  if (!isFinite(n)) return "—";
+  if (n == null || !isFinite(n)) return "—";
   return n.toFixed(3);
 }
