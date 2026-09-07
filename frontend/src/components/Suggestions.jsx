@@ -447,7 +447,23 @@ export default function Suggestions() {
                                 {s.inputSkin}
                                 {s.stattrak && <span style={{ color: COLORS.gold }}> (StatTrak™)</span>}
                                 {s.inputWear && (
-                                  <span style={{ color: COLORS.textDim }}> ({s.inputWear})</span>
+                                  <span
+                                    style={{ color: COLORS.textDim }}
+                                    title={
+                                      s.inputFloatRange
+                                        ? `Faixa de float própria dessa skin: ${fmtFloat(s.inputFloatRange.min)}–${fmtFloat(
+                                            s.inputFloatRange.max
+                                          )}. "${s.inputWear}" aqui é float bruto ${fmtFloat(
+                                            s.inputWearFloatRange?.min
+                                          )}–${fmtFloat(s.inputWearFloatRange?.max)} — o desgaste RELATIVO
+                                          (o que importa pra saída) depende dessa faixa própria, não é igual
+                                          entre skins diferentes.`
+                                        : undefined
+                                    }
+                                  >
+                                    {" "}
+                                    ({s.inputWear})
+                                  </span>
                                 )}
                                 {s.inputMarketHashName && (
                                   <a
@@ -569,7 +585,11 @@ export default function Suggestions() {
                                   <>
                                     Preço de cada saída já considera o wear real previsto — assumindo
                                     que você compra o input em <strong>{s.inputWear}</strong> (float
-                                    médio ~{fmtFloat(s.assumedAvgFloat)}), não uma média entre wears.
+                                    relativo ~{fmtFloat(s.assumedAvgFloat)}, ou seja: {fmtFloat(s.assumedAvgFloat * 100)}
+                                    % do caminho entre a skin mais nova e mais gasta que essa entrada
+                                    específica alcança — não o float bruto dela, e pode virar um wear
+                                    diferente na saída se a skin de saída tiver uma faixa de float
+                                    diferente da de entrada). Não é uma média entre wears.
                                   </>
                                 ) : (
                                   <>

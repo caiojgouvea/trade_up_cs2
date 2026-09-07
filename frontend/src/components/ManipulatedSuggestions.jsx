@@ -345,7 +345,20 @@ export default function ManipulatedSuggestions() {
                                   <ItemThumb iconUrl={l.iconUrl} rarity={s.tier} size={22} />
                                   <span>
                                     {l.count}x {l.isSouvenir && <span style={{ color: COLORS.gold }}>Lembrança </span>}
-                                    {l.skinName} <span style={{ color: COLORS.textDim }}>({l.wear})</span>
+                                    {l.skinName}{" "}
+                                    <span
+                                      style={{ color: COLORS.textDim }}
+                                      title={
+                                        l.floatRange
+                                          ? `Faixa de float própria dessa skin: ${fmtFloat(l.floatRange.min)}–${fmtFloat(
+                                              l.floatRange.max
+                                            )}. O desgaste RELATIVO dela (o que entra na conta) depende dessa
+                                            faixa, não é igual entre skins diferentes.`
+                                          : undefined
+                                      }
+                                    >
+                                      ({l.wear})
+                                    </span>
                                     {l.collectionTag !== s.collectionTag && (
                                       <span style={{ color: COLORS.rust }}> — coringa ({l.collectionName})</span>
                                     )}
@@ -447,8 +460,12 @@ export default function ManipulatedSuggestions() {
                               </div>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 10 }}>
                                 Mistura: {s.legs.map((l) => `${l.count}x ${l.isSouvenir ? "Lembrança " : ""}${l.skinName} (${l.wear})`).join(" + ")}{" "}
-                                → float médio assumido ~{fmtFloat(s.assumedAvgFloat)} (meio da faixa de
-                                cada wear escolhido — não é o float exato de cada anúncio). Custo de{" "}
+                                → float relativo médio ~{fmtFloat(s.assumedAvgFloat)} (posição entre
+                                0–1 dentro da faixa própria de cada skin de entrada, não o float bruto
+                                — e pode virar um wear bem diferente do que "parece" na saída, se a
+                                skin de saída tiver faixa de float diferente da de entrada; meio da
+                                faixa de cada wear escolhido, não o float exato de cada anúncio). Custo
+                                de{" "}
                                 {fmtBRL(s.cost)} contra {fmtBRL(s.baselineCost)} da estratégia uniforme
                                 (10x a entrada mais barata){s.baselineRoi != null && (
                                   <> — que rende {s.baselineRoi >= 0 ? "+" : ""}
