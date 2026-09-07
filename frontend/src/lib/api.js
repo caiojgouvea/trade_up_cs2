@@ -48,3 +48,13 @@ export function getSuggestions(minListings = 5) {
 export function getManipulatedSuggestions(minListings = 10) {
   return request(`/suggestions/manipulated?minListings=${minListings}`);
 }
+
+export function refreshManipulatedSuggestions(minListings = 10, exhaustive = false) {
+  const params = new URLSearchParams({ minListings: String(minListings) });
+  if (exhaustive) params.set("exhaustive", "1");
+  return request(`/suggestions/manipulated/refresh?${params}`, { method: "POST" });
+}
+
+export function getManipulatedRefreshStatus() {
+  return request("/suggestions/manipulated/refresh/status");
+}

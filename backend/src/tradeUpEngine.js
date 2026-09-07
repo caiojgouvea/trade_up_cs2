@@ -10,22 +10,43 @@ import {
   normalizeFloat,
 } from "./floatMath.js";
 
+// `sell_price` do endpoint de busca é o preço pago pelo comprador. Ao vender
+// no Mercado Steam, o vendedor recebe aproximadamente preço / 1,15 (5% de
+// taxa Steam + 10% de taxa de CS2; os centavos são arredondados pela Steam).
+// Usar o valor líquido aqui evita chamar de lucro um valor que nunca chega à
+// carteira. O arredondamento exato só pode ser conhecido na tela de anúncio.
+export const STEAM_NET_SALE_FACTOR = 1 / 1.15;
+
+function netSalePrice(marketPrice) {
+  return marketPrice * STEAM_NET_SALE_FACTOR;
+}
+
 // Mesma fórmula de src/lib/tradeUpMath.js do frontend — duplicada de
 // propósito (é pouca lógica, e mantém backend/frontend independentes).
 function computeContractStats(cost, outcomes) {
   const totalProbRaw = outcomes.reduce((s, o) => s + o.prob, 0) || 1;
-  const ev = outcomes.reduce((s, o) => s + (o.prob / totalProbRaw) * o.price, 0);
+  const grossEv = outcomes.reduce((s, o) => s + (o.prob / totalProbRaw) * o.price, 0);
+  const ev = outcomes.reduce((s, o) => s + (o.prob / totalProbRaw) * netSalePrice(o.price), 0);
   const evProfit = ev - cost;
   const roi = cost > 0 ? (evProfit / cost) * 100 : 0;
   const probLoss =
-    (outcomes.filter((o) => o.price < cost).reduce((s, o) => s + o.prob, 0) / totalProbRaw) * 100;
+    (outcomes.filter((o) => netSalePrice(o.price) < cost).reduce((s, o) => s + o.prob, 0) / totalProbRaw) * 100;
 
   let verdict;
   if (roi > 15 && probLoss < 40) verdict = "Bom contrato";
   else if (roi > 0) verdict = "Arriscado";
   else verdict = "Furada";
 
-  return { ev, evProfit, roi, probLoss: Math.min(100, Math.max(0, probLoss)), verdict };
+  return {
+    grossEv,
+    grossRoi: cost > 0 ? ((grossEv - cost) / cost) * 100 : 0,
+    ev,
+    evProfit,
+    roi,
+    saleFactor: STEAM_NET_SALE_FACTOR,
+    probLoss: Math.min(100, Math.max(0, probLoss)),
+    verdict,
+  };
 }
 
 // Junta itens (linhas por wear) em "skins" (agrupando os wears), pra ter um
@@ -123,33 +144,10 @@ function assumedFloatForWear(skinGroup, exterior) {
   return normalizeFloat(rawWorstCase, skinGroup.floatRange.min, skinGroup.floatRange.max);
 }
 
-// Quando o wear previsto não tem preço confiável, o vizinho mais próximo (por
-// faixa de float) é uma estimativa bem menos enviesada que a média de todos
-// os wears — que normalmente inclui Factory New, puxando pra cima demais se
-// o wear real que sairia for um dos mais gastos (o caso mais comum).
-function nearestPricedBand(skinGroup, targetBand) {
-  const targetMid = (targetBand.min + targetBand.max) / 2;
-  let best = null;
-  let bestDist = Infinity;
-  for (const b of skinGroup.bands) {
-    const cents = priceForWear(skinGroup, b.name);
-    if (cents == null) continue;
-    const mid = (b.min + b.max) / 2;
-    const dist = Math.abs(mid - targetMid);
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = { name: b.name, priceUsdCents: cents };
-    }
-  }
-  return best;
-}
-
-// O ponto central da correção: o wear de saída NÃO é sorteado, é
-// determinístico a partir da média de float de entrada. Dado o float médio
-// assumido (baseado no wear real que você compraria), prevê exatamente qual
-// wear cada possível skin de saída teria — e usa o preço REAL desse wear, não
-// uma média entre todos os wears. Só cai pra média se faltar dado de float
-// (pra skin de saída, ou pro input) ou se o wear previsto não tiver preço.
+// O wear de saída NÃO é sorteado: é determinístico a partir da média de
+// float de entrada. Uma sugestão só recebe preço quando esse wear exato tem
+// anúncio líquido. Não substituímos pelo wear vizinho nem pela média da skin:
+// isso criava EVs fictícios e escondia o risco da saída sem mercado.
 function predictOutcomePrice(outputSkin, assumedAvgFloat, rate) {
   let predictedWear = null;
   let targetBand = null;
@@ -177,27 +175,17 @@ function predictOutcomePrice(outputSkin, assumedAvgFloat, rate) {
     }
   }
 
-  // Sabemos qual wear sairia (o float é determinístico), mas esse wear
-  // específico não tem anúncio suficiente pra confiar num preço dele. Usa o
-  // preço do wear vizinho mais próximo como estimativa (bem menos enviesado
-  // que a média de todos os wears, que normalmente inclui Factory New e
-  // puxaria a estimativa pra cima se o wear real for um dos mais gastos).
-  if (targetBand) {
-    const neighbor = nearestPricedBand(outputSkin, targetBand);
-    if (neighbor) {
-      return {
-        price: (neighbor.priceUsdCents / 100) * rate,
-        wear: predictedWear,
-        predicted: false,
-        priceIsEstimate: true,
-        predictedFloatValue,
-      };
-    }
-  }
+  return {
+    price: null,
+    wear: predictedWear,
+    predicted: false,
+    priceIsEstimate: false,
+    predictedFloatValue,
+  };
+}
 
-  return outputSkin.avgUsdCents != null
-    ? { price: (outputSkin.avgUsdCents / 100) * rate, wear: predictedWear, predicted: false, priceIsEstimate: true, predictedFloatValue }
-    : { price: null, wear: predictedWear, predicted: false, priceIsEstimate: true, predictedFloatValue };
+function hasVerifiedPrices(outcomes) {
+  return outcomes.length > 0 && outcomes.every((outcome) => outcome.price != null && !outcome.priceIsEstimate);
 }
 
 // Preço (em BRL) de cada banda de wear que a skin realmente alcança, pra
@@ -386,6 +374,144 @@ function souvenirInputUnits(souvenirMenu, collectionTag, tier) {
   return units;
 }
 
+// Desde outubro de 2025, 5 Covert viram uma faca (StatTrak) ou uma faca/luva
+// normal da coleção de um dos inputs. Esses especiais aparecem no Market como
+// Covert + `special = 1`; não fazem parte da escada normal Classified →
+// Covert, então precisam de um scanner próprio.
+async function computeFiveCovertSuggestions({ minListings = 10 } = {}) {
+  const { rate, menu, collectionNames } = await buildInputMenu(minListings);
+  const floatMap = getFloatRangeMap();
+  const specialRows = db
+    .prepare(
+      `SELECT collection_tag, rarity, stattrak, weapon, skin, exterior, icon_url, price_usd_cents, sell_listings
+       FROM items
+       WHERE commodity = 0
+         AND exterior IS NOT NULL
+         AND special = 1
+         AND rarity = 'Covert'
+         AND price_usd_cents IS NOT NULL
+         AND ${REAL_COLLECTION_FILTER}`
+    )
+    .all()
+    .filter((r) => (r.sell_listings ?? 0) >= minListings);
+  const specialSkins = groupIntoSkins(specialRows, floatMap);
+  const specialsByCollection = new Map();
+  for (const skin of specialSkins) {
+    if (!specialsByCollection.has(skin.collectionTag)) specialsByCollection.set(skin.collectionTag, new Map());
+    const byStatTrak = specialsByCollection.get(skin.collectionTag);
+    const key = skin.stattrak ? 1 : 0;
+    if (!byStatTrak.has(key)) byStatTrak.set(key, []);
+    byStatTrak.get(key).push(skin);
+  }
+
+  const suggestions = [];
+  for (const [collectionTag, byRarity] of menu) {
+    for (const stattrak of [0, 1]) {
+      const inputs = byRarity.get("Covert")?.[stattrak] ?? [];
+      const outputs = specialsByCollection.get(collectionTag)?.get(stattrak) ?? [];
+      if (!inputs.length || !outputs.length) continue;
+
+      const inputUnits = [];
+      for (const skin of inputs) {
+        for (const wear of skin.wears) {
+          if (wear.priceUsdCents != null) inputUnits.push({ skin, wear });
+        }
+      }
+      if (!inputUnits.length) continue;
+
+      const cheapestUnit = inputUnits.reduce((min, unit) =>
+        unit.wear.priceUsdCents < min.wear.priceUsdCents ? unit : min
+      );
+      const assumedAvgFloat = assumedFloatForWear(cheapestUnit.skin, cheapestUnit.wear.exterior);
+      if (assumedAvgFloat == null) continue;
+
+      const outcomes = outputs.map((output) => {
+        const predicted = predictOutcomePrice(output, assumedAvgFloat, rate);
+        return {
+          name: `★ ${output.weapon}${output.skin ? ` | ${output.skin}` : ""}${stattrak ? " (StatTrak™)" : ""}`,
+          weapon: output.weapon,
+          skin: output.skin,
+          stattrak: !!stattrak,
+          prob: 100 / outputs.length,
+          price: predicted.price,
+          netPrice: predicted.price == null ? null : netSalePrice(predicted.price),
+          predictedWear: predicted.wear,
+          predictedFloatValue: predicted.predictedFloatValue,
+          priceIsEstimate: false,
+          minListings: output.minListings,
+          iconUrl: output.iconUrl,
+          floatRange: output.floatRange,
+          wearPrices: wearPricesBrl(output, rate),
+          isSpecial: true,
+        };
+      });
+      if (!hasVerifiedPrices(outcomes)) continue;
+
+      const costBrl = (cheapestUnit.wear.priceUsdCents / 100) * rate * 5;
+      const stats = computeContractStats(costBrl, outcomes);
+      if (!Number.isFinite(stats.roi)) continue;
+
+      suggestions.push({
+        collectionTag,
+        collectionName: collectionNames.get(collectionTag) ?? collectionTag,
+        tier: "Covert",
+        nextTier: "★ Faca/Luvas",
+        stattrak: !!stattrak,
+        inputCount: 5,
+        contractType: "five-covert",
+        inputSkin: `${cheapestUnit.skin.weapon} | ${cheapestUnit.skin.skin}`,
+        inputWear: cheapestUnit.wear.exterior,
+        inputIconUrl: cheapestUnit.skin.iconUrl,
+        inputListings: cheapestUnit.wear.sellListings,
+        inputIsSouvenir: false,
+        inputMarketHashName: marketHashName({
+          weapon: cheapestUnit.skin.weapon,
+          skin: cheapestUnit.skin.skin,
+          exterior: cheapestUnit.wear.exterior,
+          stattrak: !!stattrak,
+          souvenir: false,
+        }),
+        inputFloatRange: cheapestUnit.skin.floatRange,
+        inputWearFloatRange: bandForWear(cheapestUnit.skin, cheapestUnit.wear.exterior),
+        assumedAvgFloat,
+        cost: costBrl,
+        outcomeCount: outcomes.length,
+        minOutputListings: Math.min(...outcomes.map((outcome) => outcome.minListings)),
+        outcomes,
+        stats,
+        floatInfo: computeFloatGuidance({ cheapestInput: cheapestUnit.skin, outputs, rate }),
+      });
+    }
+  }
+  return suggestions;
+}
+
+// Mantém alternativas reais, mas corta ruído: dentro da mesma coleção/tier,
+// uma opção é dominada se outra custa menos, dá pelo menos o mesmo lucro
+// esperado líquido e não aumenta a chance de perda. Assim o scanner testa
+// todo skin+wear (inclusive os que compram um float melhor), sem despejar na
+// tabela centenas de escolhas objetivamente piores.
+function paretoFrontier(candidates, limit = 30) {
+  const EPS = 1e-9;
+  const frontier = candidates.filter((candidate, index) =>
+    !candidates.some((other, otherIndex) => {
+      if (index === otherIndex) return false;
+      const noWorse =
+        other.cost <= candidate.cost + EPS &&
+        other.stats.evProfit >= candidate.stats.evProfit - EPS &&
+        other.stats.probLoss <= candidate.stats.probLoss + EPS;
+      const strictlyBetter =
+        other.cost < candidate.cost - EPS ||
+        other.stats.evProfit > candidate.stats.evProfit + EPS ||
+        other.stats.probLoss < candidate.stats.probLoss - EPS;
+      return noWorse && strictlyBetter;
+    })
+  );
+  return frontier
+    .sort((a, b) => b.stats.roi - a.stats.roi || a.stats.probLoss - b.stats.probLoss || a.cost - b.cost)
+    .slice(0, limit);
+}
+
 // Gera sugestões de trade-up de UMA coleção só (o tipo clássico: 10 skins da
 // mesma coleção e raridade). Trade-ups misturando coleções ficam pra uma
 // próxima etapa (o espaço de busca cresce muito mais).
@@ -426,19 +552,15 @@ export async function computeSingleCollectionSuggestions({ minListings = 10 } = 
         }
         if (!inputUnits.length) continue;
 
-        const cheapestUnit = inputUnits.reduce((min, u) =>
-          u.wear.priceUsdCents < min.wear.priceUsdCents ? u : min
-        );
+        const candidates = [];
+        for (const inputUnit of inputUnits) {
+          const costBrl = (inputUnit.wear.priceUsdCents / 100) * rate * 10;
+          // Usa o pior float dentro do wear anunciado: não assume que o item
+          // mais barato é uma versão low-float escondida dentro da mesma faixa.
+          const assumedAvgFloat = assumedFloatForWear(inputUnit.skin, inputUnit.wear.exterior);
+          if (assumedAvgFloat == null) continue;
 
-        const costBrl = (cheapestUnit.wear.priceUsdCents / 100) * rate * 10;
-
-        // Float médio assumido = meio da faixa do wear que você realmente
-        // compraria (a entrada mais barata), normalizado pela faixa própria
-        // dessa skin (ver assumedFloatForWear) — não o float bruto.
-        const assumedAvgFloat = assumedFloatForWear(cheapestUnit.skin, cheapestUnit.wear.exterior);
-
-        const outcomes = outputs
-          .map((o) => {
+          const outcomes = outputs.map((o) => {
             const predicted = predictOutcomePrice(o, assumedAvgFloat, rate);
             return {
               name: `${o.weapon} | ${o.skin}${stattrak ? " (StatTrak™)" : ""}`,
@@ -447,67 +569,57 @@ export async function computeSingleCollectionSuggestions({ minListings = 10 } = 
               stattrak: !!stattrak,
               prob: 100 / outputs.length,
               price: predicted.price,
+              netPrice: predicted.price == null ? null : netSalePrice(predicted.price),
               predictedWear: predicted.wear,
               predictedFloatValue: predicted.predictedFloatValue,
-              priceIsEstimate: predicted.priceIsEstimate,
+              priceIsEstimate: false,
               minListings: o.minListings,
               iconUrl: o.iconUrl,
               floatRange: o.floatRange,
               wearPrices: wearPricesBrl(o, rate),
             };
-          })
-          .filter((o) => o.price != null);
-        if (!outcomes.length) continue;
+          });
+          if (!hasVerifiedPrices(outcomes)) continue;
 
-        const stats = computeContractStats(costBrl, outcomes);
-        if (!Number.isFinite(stats.roi)) continue;
+          const stats = computeContractStats(costBrl, outcomes);
+          if (!Number.isFinite(stats.roi)) continue;
 
-        const floatInfo = computeFloatGuidance({ cheapestInput: cheapestUnit.skin, outputs, rate });
-
-        suggestions.push({
-          collectionTag,
-          collectionName: collectionNames.get(collectionTag) ?? collectionTag,
-          tier,
-          nextTier,
-          stattrak: !!stattrak,
-          inputSkin: `${cheapestUnit.skin.weapon} | ${cheapestUnit.skin.skin}`,
-          inputWear: cheapestUnit.wear.exterior,
-          inputIconUrl: cheapestUnit.skin.iconUrl,
-          inputListings: cheapestUnit.wear.sellListings,
-          // Lembrança é mais barata que a versão normal na maioria das vezes
-          // — se a entrada mais barata achada foi uma, o usuário precisa
-          // saber (a página de compra é outra: "Souvenir Arma | Skin (...)",
-          // não a normal).
-          inputIsSouvenir: !!cheapestUnit.isSouvenir,
-          inputMarketHashName: marketHashName({
-            weapon: cheapestUnit.skin.weapon,
-            skin: cheapestUnit.skin.skin,
-            exterior: cheapestUnit.wear.exterior,
+          candidates.push({
+            collectionTag,
+            collectionName: collectionNames.get(collectionTag) ?? collectionTag,
+            tier,
+            nextTier,
             stattrak: !!stattrak,
-            souvenir: !!cheapestUnit.isSouvenir,
-          }),
-          // Faixa de float PRÓPRIA dessa skin de entrada — a calculadora de
-          // float no front precisa disso pra normalizar os floats brutos que
-          // o usuário digita (ver normalizeFloat em floatMath.js). Sem isso
-          // ela erra pra qualquer skin cuja faixa não seja 0–1 inteira.
-          inputFloatRange: cheapestUnit.skin.floatRange,
-          // Faixa de float BRUTA do wear específico que você vai comprar
-          // (ex: Field-Tested já recortado pro min/max dessa skin) — sem
-          // isso a calculadora podia pedir um float impossível pra esse wear
-          // (ex: "até 0.07" pra um item que você só compra em Field-Tested,
-          // que nunca desce de 0.15).
-          inputWearFloatRange: bandForWear(cheapestUnit.skin, cheapestUnit.wear.exterior),
-          assumedAvgFloat,
-          cost: costBrl,
-          outcomeCount: outcomes.length,
-          minOutputListings: Math.min(...outcomes.map((o) => o.minListings)),
-          outcomes,
-          stats,
-          floatInfo,
-        });
+            inputCount: 10,
+            inputSkin: `${inputUnit.skin.weapon} | ${inputUnit.skin.skin}`,
+            inputWear: inputUnit.wear.exterior,
+            inputIconUrl: inputUnit.skin.iconUrl,
+            inputListings: inputUnit.wear.sellListings,
+            inputIsSouvenir: !!inputUnit.isSouvenir,
+            inputMarketHashName: marketHashName({
+              weapon: inputUnit.skin.weapon,
+              skin: inputUnit.skin.skin,
+              exterior: inputUnit.wear.exterior,
+              stattrak: !!stattrak,
+              souvenir: !!inputUnit.isSouvenir,
+            }),
+            inputFloatRange: inputUnit.skin.floatRange,
+            inputWearFloatRange: bandForWear(inputUnit.skin, inputUnit.wear.exterior),
+            assumedAvgFloat,
+            cost: costBrl,
+            outcomeCount: outcomes.length,
+            minOutputListings: Math.min(...outcomes.map((o) => o.minListings)),
+            outcomes,
+            stats,
+            floatInfo: computeFloatGuidance({ cheapestInput: inputUnit.skin, outputs, rate }),
+          });
+        }
+        suggestions.push(...paretoFrontier(candidates));
       }
     }
   }
+
+  suggestions.push(...(await computeFiveCovertSuggestions({ minListings })));
 
   suggestions.sort((a, b) => b.stats.roi - a.stats.roi);
   return { rate, suggestions };
@@ -559,7 +671,6 @@ function outcomesAcrossGroups(groups, avgFloat, stattrak, rate) {
     const probEach = ((count / 10) * 100) / outputs.length;
     for (const o of outputs) {
       const predicted = predictOutcomePrice(o, avgFloat, rate);
-      if (predicted.price == null) continue;
       outcomes.push({
         name: `${o.weapon} | ${o.skin}${stattrak ? " (StatTrak™)" : ""}`,
         weapon: o.weapon,
@@ -567,6 +678,7 @@ function outcomesAcrossGroups(groups, avgFloat, stattrak, rate) {
         stattrak: !!stattrak,
         prob: probEach,
         price: predicted.price,
+        netPrice: predicted.price == null ? null : netSalePrice(predicted.price),
         predictedWear: predicted.wear,
         predictedFloatValue: predicted.predictedFloatValue,
         priceIsEstimate: predicted.priceIsEstimate,
@@ -618,7 +730,7 @@ function bestManipulatedMix(inputUnits, outputs, stattrak, rate) {
         const costBrl = (costCents / 100) * rate;
 
         const outcomes = outcomesAcrossGroups(new Map([["_", outputGroup]]), avgFloat, stattrak, rate);
-        if (!outcomes.length) continue;
+        if (!hasVerifiedPrices(outcomes)) continue;
 
         const stats = computeContractStats(costBrl, outcomes);
         if (!Number.isFinite(stats.roi)) continue;
@@ -671,7 +783,7 @@ function bestCrossCollectionMix(primaryUnits, primaryCollectionTag, primaryOutpu
           [w.skin.collectionTag, { count: countW, outputs: wildcardOutputs }],
         ]);
         const outcomes = outcomesAcrossGroups(groups, avgFloat, stattrak, rate);
-        if (!outcomes.length) continue;
+        if (!hasVerifiedPrices(outcomes)) continue;
 
         const stats = computeContractStats(costBrl, outcomes);
         if (!Number.isFinite(stats.roi)) continue;
@@ -693,7 +805,12 @@ function bestCrossCollectionMix(primaryUnits, primaryCollectionTag, primaryOutpu
 // entra na lista se render ROI melhor que a estratégia uniforme (a maioria
 // das coleções não ganha nada misturando — o sinal fica só nos casos em que
 // realmente compensa).
-export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
+// `exhaustive`: pro job em background (ver manipulatedJob.js) — remove o
+// corte do pool de coringas pra TODAS as raridades, não só Restricted/
+// Classified. Buscar contra toda unidade de toda coleção em Consumer/
+// Industrial/Mil-Spec é caro (pode levar horas), por isso isso só roda
+// quando pedido explicitamente, nunca na rota síncrona normal.
+export async function computeManipulatedSuggestions({ minListings = 10, exhaustive = false } = {}) {
   const { rate, menu, souvenirMenu, collectionNames } = await buildInputMenu(minListings);
 
   const suggestions = [];
@@ -739,15 +856,21 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
       // as saídas de maior valor) têm muito menos itens no catálogo inteiro
       // que as raridades baixas, então dá pra buscar bem mais fundo sem o
       // custo explodir. Pras raridades baixas (Consumer/Industrial/Mil-Spec,
-      // com milhares de linhas) mantém o corte pequeno.
-      const wildcardCap = tier === "Restricted" || tier === "Classified" ? 200 : 15;
-      const lowFloat = [...withFloat]
-        .sort((a, b) => a.floatMid - b.floatMid || a.wear.priceUsdCents - b.wear.priceUsdCents)
-        .slice(0, wildcardCap);
-      const highFloat = [...withFloat]
-        .sort((a, b) => b.floatMid - a.floatMid || a.wear.priceUsdCents - b.wear.priceUsdCents)
-        .slice(0, wildcardCap);
-      const wildcardPool = [...lowFloat, ...highFloat];
+      // com milhares de linhas) mantém o corte pequeno — exceto no modo
+      // exaustivo (job em background), que usa tudo, em qualquer raridade.
+      let wildcardPool;
+      if (exhaustive) {
+        wildcardPool = withFloat;
+      } else {
+        const cap = tier === "Restricted" || tier === "Classified" ? 200 : 15;
+        const lowFloat = [...withFloat]
+          .sort((a, b) => a.floatMid - b.floatMid || a.wear.priceUsdCents - b.wear.priceUsdCents)
+          .slice(0, cap);
+        const highFloat = [...withFloat]
+          .sort((a, b) => b.floatMid - a.floatMid || a.wear.priceUsdCents - b.wear.priceUsdCents)
+          .slice(0, cap);
+        wildcardPool = [...lowFloat, ...highFloat];
+      }
 
       for (const [collectionTag, byRarity] of menu) {
         const outputs = outputsFor(collectionTag);
@@ -781,7 +904,7 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
           stattrak,
           rate
         );
-        const baselineStats = baselineOutcomes.length
+        const baselineStats = hasVerifiedPrices(baselineOutcomes)
           ? computeContractStats(baselineCostBrl, baselineOutcomes)
           : null;
 

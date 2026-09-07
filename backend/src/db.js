@@ -9,6 +9,11 @@ fs.mkdirSync(dataDir, { recursive: true });
 
 export const db = new DatabaseSync(path.join(dataDir, "prices.db"));
 
+// WAL: permite a worker thread do recálculo de sugestões manipuladas (que
+// pode rodar por horas no modo exaustivo) ler o banco numa conexão própria
+// sem travar o processo principal, e vice-versa.
+db.exec("PRAGMA journal_mode = WAL;");
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS collections (
     tag TEXT PRIMARY KEY,
@@ -47,6 +52,21 @@ db.exec(`
     max_float REAL NOT NULL,
     PRIMARY KEY (weapon, skin)
   );
+
+  -- Último resultado calculado de cada tipo de sugestão (só guarda o mais
+  -- recente, não histórico). O cálculo em si roda numa worker thread à
+  -- parte (ver manipulatedJob.js) e escreve aqui quando termina; as rotas
+  -- da API só leem daqui, então servir a sugestão é instantâneo mesmo que o
+  -- cálculo mais recente tenha levado horas.
+  CREATE TABLE IF NOT EXISTS suggestion_cache (
+    kind TEXT PRIMARY KEY,
+    computed_at TEXT NOT NULL,
+    min_listings INTEGER NOT NULL,
+    exhaustive INTEGER NOT NULL DEFAULT 0,
+    rate REAL NOT NULL,
+    pricing_version TEXT NOT NULL DEFAULT 'legacy',
+    payload TEXT NOT NULL
+  );
 `);
 
 // Migração idempotente pra bases já criadas antes destas colunas existirem.
@@ -62,4 +82,11 @@ const migrations = [
 ];
 for (const [column, sql] of migrations) {
   if (!existingColumns.has(column)) db.exec(sql);
+}
+
+const cacheColumns = new Set(
+  db.prepare("PRAGMA table_info(suggestion_cache)").all().map((c) => c.name)
+);
+if (!cacheColumns.has("pricing_version")) {
+  db.exec("ALTER TABLE suggestion_cache ADD COLUMN pricing_version TEXT NOT NULL DEFAULT 'legacy'");
 }

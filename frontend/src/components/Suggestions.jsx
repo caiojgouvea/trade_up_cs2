@@ -45,6 +45,7 @@ export default function Suggestions() {
   const [minListings, setMinListings] = useState(10);
   const [stattrakFilter, setStattrakFilter] = useState("all");
   const [rarityFilter, setRarityFilter] = useState("all");
+  const [riskFilter, setRiskFilter] = useState("all");
   const [textFilter, setTextFilter] = useState("");
   const [minCost, setMinCost] = useState("");
   const [maxCost, setMaxCost] = useState("");
@@ -148,6 +149,12 @@ export default function Suggestions() {
     if (rarityFilter !== "all") {
       rows = rows.filter((s) => s.nextTier === rarityFilter);
     }
+    if (riskFilter === "high") rows = rows.filter((s) => s.stats.probLoss >= 45);
+    if (riskFilter === "fifty") {
+      rows = rows.filter(
+        (s) => s.outcomes.length === 2 && s.outcomes.every((o) => Math.abs(Number(o.prob) - 50) < 0.01)
+      );
+    }
     if (q) {
       rows = rows.filter(
         (s) =>
@@ -168,7 +175,7 @@ export default function Suggestions() {
       if (typeof av === "string") return dir * av.localeCompare(bv);
       return dir * (av - bv);
     });
-  }, [suggestions, stattrakFilter, rarityFilter, textFilter, minCost, maxCost, sort, favorites]);
+  }, [suggestions, stattrakFilter, rarityFilter, riskFilter, textFilter, minCost, maxCost, sort, favorites]);
 
   const rarityOptions = useMemo(() => {
     const order = ["Industrial Grade", "Mil-Spec Grade", "Restricted", "Classified", "Covert"];
@@ -261,6 +268,20 @@ export default function Suggestions() {
 
         <div
           style={{
+            background: COLORS.panel,
+            border: `1px solid ${COLORS.green}`,
+            borderRadius: 8,
+            padding: "9px 12px",
+            color: COLORS.textDim,
+            fontSize: 11,
+            marginBottom: 14,
+          }}
+        >
+          <strong style={{ color: COLORS.green }}>Modo conservador:</strong> o retorno é líquido após a taxa estimada do Mercado Steam e só usa o preço direto do wear previsto para todas as saídas. Sem preço aproximado, sem média entre wears.
+        </div>
+
+        <div
+          style={{
             display: "flex",
             gap: 10,
             flexWrap: "wrap",
@@ -306,6 +327,16 @@ export default function Suggestions() {
                 Saída: {r}
               </option>
             ))}
+          </select>
+          <select
+            className="tuc-input"
+            style={{ width: 155 }}
+            value={riskFilter}
+            onChange={(e) => setRiskFilter(e.target.value)}
+          >
+            <option value="all">Qualquer risco</option>
+            <option value="high">Risco alto (45%+)</option>
+            <option value="fifty">50/50 exato</option>
           </select>
           <input
             className="tuc-input"
@@ -415,8 +446,8 @@ export default function Suggestions() {
                       <th>Raridade</th>
                       <th>ST</th>
                       <th>Entrada mais barata</th>
-                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("cost")}>Custo (10x)</th>
-                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.roi")}>Retorno esp.</th>
+                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("cost")}>Custo</th>
+                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.roi")}>Retorno líquido esp.</th>
                       <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.probLoss")}>Risco</th>
                       <th>Veredito</th>
                       <th>Float p/ melhor saída</th>
@@ -503,7 +534,7 @@ export default function Suggestions() {
                               </span>
                             </div>
                           </td>
-                          <td>{fmtBRL(s.cost)}</td>
+                          <td title={`${s.inputCount ?? 10} inputs`}>{fmtBRL(s.cost)}</td>
                           <td style={{ color: s.stats.evProfit >= 0 ? COLORS.green : COLORS.rust }}>
                             {s.stats.roi >= 0 ? "+" : ""}
                             {s.stats.roi.toFixed(1)}%
@@ -599,9 +630,12 @@ export default function Suggestions() {
                           <tr>
                             <td colSpan={12} style={{ background: COLORS.panelAlt }}>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
-                                Valor esperado: {fmtBRL(s.stats.ev)} · Lucro esperado:{" "}
-                                {fmtBRL(s.stats.evProfit)} · {s.outcomeCount} saídas possíveis (1/
+                                Valor esperado líquido: {fmtBRL(s.stats.ev)} · Lucro líquido esperado:{" "}
+                                {fmtBRL(s.stats.evProfit)} · valor bruto antes da taxa: {fmtBRL(s.stats.grossEv)} · {s.outcomeCount} saídas possíveis (1/
                                 {s.outcomeCount} de chance cada)
+                              </div>
+                              <div style={{ fontSize: 11, color: COLORS.gold, marginBottom: 6 }}>
+                                Retorno já desconta a taxa do Mercado Steam (estimativa de 15%; o arredondamento final pode variar alguns centavos). Só entram saídas cujo wear previsto tem preço direto e liquidez suficiente.
                               </div>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
                                 {s.assumedAvgFloat != null ? (
@@ -677,7 +711,7 @@ export default function Suggestions() {
                                   defaultOutcomeName={s.floatInfo?.bestOutcomeName}
                                   legs={[
                                     {
-                                      count: 10,
+                                      count: s.inputCount ?? 10,
                                       floatRange: s.inputFloatRange,
                                       wearRange: s.inputWearFloatRange,
                                       label: null,
@@ -706,7 +740,7 @@ export default function Suggestions() {
                                     </span>
                                   </span>
                                   <span style={{ color: COLORS.textDim, whiteSpace: "nowrap" }}>
-                                    {o.prob.toFixed(1)}% · {fmtBRL(o.price)} · {o.minListings} anúncios
+                                    {o.prob.toFixed(1)}% · mercado {fmtBRL(o.price)} → líquido {fmtBRL(o.netPrice)} · {o.minListings} anúncios
                                   </span>
                                 </div>
                               ))}

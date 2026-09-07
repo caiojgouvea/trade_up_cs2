@@ -114,7 +114,8 @@ export default function TradeUpComparator() {
         </div>
         <p style={{ color: COLORS.textDim, fontSize: 13, marginTop: 6, maxWidth: 640 }}>
           Cadastre os contratos que você mesmo calculou (custo dos 10 inputs + resultados possíveis com
-          % e preço) e compare risco contra retorno num só lugar.
+          % e preço de mercado) e compare risco contra retorno num só lugar. O retorno usa o valor líquido
+          estimado após a taxa de 15% do Mercado Steam.
         </p>
       </div>
 
@@ -292,7 +293,7 @@ export default function TradeUpComparator() {
                     <tr>
                       <th>Contrato</th>
                       <th>Custo</th>
-                      <th>Retorno esp.</th>
+                      <th>Retorno líquido esp.</th>
                       <th>Risco</th>
                       <th>Veredito</th>
                       <th></th>
@@ -356,7 +357,7 @@ export default function TradeUpComparator() {
                                 </div>
                               )}
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
-                                Valor esperado: {fmtBRL(c.stats.ev)} · Lucro esperado: {fmtBRL(c.stats.evProfit)}
+                                Valor esperado líquido: {fmtBRL(c.stats.ev)} · Lucro líquido esperado: {fmtBRL(c.stats.evProfit)} · valor bruto: {fmtBRL(c.stats.grossEv)}
                               </div>
                               {c.outcomes.map((o, i) => (
                                 <div

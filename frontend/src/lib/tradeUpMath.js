@@ -1,9 +1,17 @@
 import { COLORS } from "./colors";
 
+// Preço do Mercado Steam é o que o comprador paga. Na revenda de item CS2,
+// o vendedor recebe aproximadamente preço / 1,15 (taxas Steam + CS2).
+export const STEAM_NET_SALE_FACTOR = 1 / 1.15;
+
 export function computeStats(contract) {
   const totalProbRaw = contract.outcomes.reduce((s, o) => s + Number(o.prob || 0), 0) || 1;
-  const ev = contract.outcomes.reduce(
+  const grossEv = contract.outcomes.reduce(
     (s, o) => s + (Number(o.prob || 0) / totalProbRaw) * Number(o.price || 0),
+    0
+  );
+  const ev = contract.outcomes.reduce(
+    (s, o) => s + (Number(o.prob || 0) / totalProbRaw) * Number(o.netPrice ?? Number(o.price || 0) * STEAM_NET_SALE_FACTOR),
     0
   );
   const cost = Number(contract.cost || 0);
@@ -11,7 +19,7 @@ export function computeStats(contract) {
   const roi = cost > 0 ? (evProfit / cost) * 100 : 0;
   const probLoss =
     (contract.outcomes
-      .filter((o) => Number(o.price || 0) < cost)
+      .filter((o) => Number(o.netPrice ?? Number(o.price || 0) * STEAM_NET_SALE_FACTOR) < cost)
       .reduce((s, o) => s + Number(o.prob || 0), 0) /
       totalProbRaw) *
     100;
@@ -33,6 +41,8 @@ export function computeStats(contract) {
   }
 
   return {
+    grossEv,
+    grossRoi: cost > 0 ? ((grossEv - cost) / cost) * 100 : 0,
     ev,
     evProfit,
     roi,

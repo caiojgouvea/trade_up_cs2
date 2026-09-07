@@ -1,10 +1,14 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Star, Shuffle, ExternalLink, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronUp, Star, Shuffle, ExternalLink, AlertTriangle, RefreshCw } from "lucide-react";
 import { COLORS } from "../lib/colors";
 import { fmtBRL, fmtFloat } from "../lib/tradeUpMath";
 import { rarityColor } from "../lib/rarity";
 import { loadFavoriteManipulated, saveFavoriteManipulated, manipulatedKey } from "../lib/favorites";
-import { getManipulatedSuggestions } from "../lib/api";
+import {
+  getManipulatedRefreshStatus,
+  getManipulatedSuggestions,
+  refreshManipulatedSuggestions,
+} from "../lib/api";
 import ItemThumb from "./ItemThumb";
 import FloatCalculator from "./FloatCalculator";
 
@@ -30,8 +34,11 @@ export default function ManipulatedSuggestions() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [minListings, setMinListings] = useState(10);
+  const [cacheInfo, setCacheInfo] = useState(null);
+  const [jobStatus, setJobStatus] = useState(null);
   const [stattrakFilter, setStattrakFilter] = useState("all");
   const [rarityFilter, setRarityFilter] = useState("all");
+  const [riskFilter, setRiskFilter] = useState("all");
   const [textFilter, setTextFilter] = useState("");
   const [minCost, setMinCost] = useState("");
   const [maxCost, setMaxCost] = useState("");
@@ -51,20 +58,62 @@ export default function ManipulatedSuggestions() {
 
   useEffect(() => {
     load();
+    getManipulatedRefreshStatus().then(setJobStatus).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function load() {
+  useEffect(() => {
+    if (!jobStatus?.running) return undefined;
+
+    const timer = setInterval(async () => {
+      try {
+        const next = await getManipulatedRefreshStatus();
+        setJobStatus(next);
+        if (!next.running) {
+          if (next.error) {
+            setError(`O recálculo falhou: ${next.error}`);
+          } else {
+            setMinListings(next.minListings);
+            load(next.minListings);
+          }
+        }
+      } catch (e) {
+        setError(e.message);
+      }
+    }, 2000);
+
+    return () => clearInterval(timer);
+    // `load` é estável para o ciclo de vida deste componente; só a execução
+    // concluída do job deve disparar uma nova leitura do cache.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobStatus?.running]);
+
+  async function load(targetMinListings = minListings) {
     setLoading(true);
     setError("");
     try {
-      const data = await getManipulatedSuggestions(minListings);
+      const data = await getManipulatedSuggestions(targetMinListings);
       setSuggestions(data.suggestions);
       setRate(data.rate);
+      setCacheInfo({
+        computedAt: data.computedAt ?? null,
+        minListings: data.minListings ?? targetMinListings,
+        exhaustive: Boolean(data.exhaustive),
+      });
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleRefresh(exhaustive) {
+    setError("");
+    try {
+      const status = await refreshManipulatedSuggestions(minListings, exhaustive);
+      setJobStatus(status);
+    } catch (e) {
+      setError(e.message);
     }
   }
 
@@ -91,6 +140,12 @@ export default function ManipulatedSuggestions() {
     if (rarityFilter !== "all") {
       rows = rows.filter((s) => s.nextTier === rarityFilter);
     }
+    if (riskFilter === "high") rows = rows.filter((s) => s.stats.probLoss >= 45);
+    if (riskFilter === "fifty") {
+      rows = rows.filter(
+        (s) => s.outcomes.length === 2 && s.outcomes.every((o) => Math.abs(Number(o.prob) - 50) < 0.01)
+      );
+    }
     if (q) {
       rows = rows.filter(
         (s) =>
@@ -112,7 +167,7 @@ export default function ManipulatedSuggestions() {
       if (typeof av === "string") return dir * av.localeCompare(bv);
       return dir * (av - bv);
     });
-  }, [suggestions, stattrakFilter, rarityFilter, textFilter, minCost, maxCost, sort, favorites]);
+  }, [suggestions, stattrakFilter, rarityFilter, riskFilter, textFilter, minCost, maxCost, sort, favorites]);
 
   const rarityOptions = useMemo(() => {
     const order = ["Industrial Grade", "Mil-Spec Grade", "Restricted", "Classified", "Covert"];
@@ -143,7 +198,7 @@ export default function ManipulatedSuggestions() {
           isso muda de propósito qual wear cada saída possível vai ter. Só aparece aqui quando a
           mistura bate a estratégia uniforme — a maioria das coleções não ganha nada misturando.
           <strong style={{ color: COLORS.text }}> Atenção: </strong>
-          o float usado é o meio da faixa de cada wear (Steam não expõe o float exato de cada
+          o float usado é o pior limite da faixa de cada wear (Steam não expõe o float exato de cada
           anúncio antes de comprar), então o resultado é uma estimativa, não garantia — o wear
           real de cada anúncio específico pode variar dentro da faixa.
         </p>
@@ -194,6 +249,20 @@ export default function ManipulatedSuggestions() {
 
         <div
           style={{
+            background: COLORS.panel,
+            border: `1px solid ${COLORS.green}`,
+            borderRadius: 8,
+            padding: "9px 12px",
+            color: COLORS.textDim,
+            fontSize: 11,
+            marginBottom: 14,
+          }}
+        >
+          <strong style={{ color: COLORS.green }}>Modo conservador:</strong> o retorno é líquido após a taxa estimada do Mercado Steam e só usa o preço direto do wear previsto para todas as saídas.
+        </div>
+
+        <div
+          style={{
             display: "flex",
             gap: 10,
             flexWrap: "wrap",
@@ -214,9 +283,28 @@ export default function ManipulatedSuggestions() {
               min={0}
               value={minListings}
               onChange={(e) => setMinListings(Number(e.target.value))}
-              onBlur={load}
+              onBlur={() => load()}
             />
           </label>
+          <button
+            className="tuc-btn-ghost"
+            style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}
+            onClick={() => handleRefresh(false)}
+            disabled={jobStatus?.running}
+            title="Recalcula com o pool otimizado. O resultado anterior continua disponível até terminar."
+          >
+            <RefreshCw size={13} className={jobStatus?.running ? "tuc-spin" : ""} />
+            {jobStatus?.running ? "Recalculando..." : "Recalcular"}
+          </button>
+          <button
+            className="tuc-btn-ghost"
+            style={{ whiteSpace: "nowrap" }}
+            onClick={() => handleRefresh(true)}
+            disabled={jobStatus?.running}
+            title="Testa todos os itens coringa. Pode levar horas e continua rodando no servidor."
+          >
+            Busca exaustiva
+          </button>
           <select
             className="tuc-input"
             style={{ width: 140 }}
@@ -239,6 +327,16 @@ export default function ManipulatedSuggestions() {
                 Saída: {r}
               </option>
             ))}
+          </select>
+          <select
+            className="tuc-input"
+            style={{ width: 155 }}
+            value={riskFilter}
+            onChange={(e) => setRiskFilter(e.target.value)}
+          >
+            <option value="all">Qualquer risco</option>
+            <option value="high">Risco alto (45%+)</option>
+            <option value="fifty">50/50 exato</option>
           </select>
           <input
             className="tuc-input"
@@ -271,6 +369,22 @@ export default function ManipulatedSuggestions() {
             </span>
           )}
         </div>
+
+        {(jobStatus?.running || cacheInfo?.computedAt) && (
+          <div
+            style={{
+              marginTop: -8,
+              marginBottom: 16,
+              color: COLORS.textDim,
+              fontSize: 11,
+              fontFamily: "'IBM Plex Mono', monospace",
+            }}
+          >
+            {jobStatus?.running
+              ? `Calculando ${jobStatus.exhaustive ? "em modo exaustivo" : "em modo otimizado"} com liquidez mínima ${jobStatus.minListings}... A página continua utilizável.`
+              : `Resultado em cache: ${new Date(cacheInfo.computedAt).toLocaleString("pt-BR")} · liquidez mínima ${cacheInfo.minListings}${cacheInfo.exhaustive ? " · busca exaustiva" : ""}.`}
+          </div>
+        )}
 
         {loading ? (
           <div style={{ color: COLORS.textDim, fontSize: 13 }}>Calculando...</div>
@@ -477,9 +591,12 @@ export default function ManipulatedSuggestions() {
                           <tr>
                             <td colSpan={11} style={{ background: COLORS.panelAlt }}>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
-                                Valor esperado: {fmtBRL(s.stats.ev)} · Lucro esperado:{" "}
+                                Valor esperado líquido: {fmtBRL(s.stats.ev)} · Lucro líquido esperado:{" "}
                                 {fmtBRL(s.stats.evProfit)} · {s.outcomeCount} saídas possíveis
                                 {!s.crossCollection && <> (1/{s.outcomeCount} de chance cada)</>}
+                              </div>
+                              <div style={{ fontSize: 11, color: COLORS.gold, marginBottom: 10 }}>
+                                Retorno já desconta a taxa do Mercado Steam (estimativa de 15%). Só entram saídas com preço direto para o wear previsto.
                               </div>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 10 }}>
                                 Mistura: {s.legs.map((l) => `${l.count}x ${l.isSouvenir ? "Lembrança " : ""}${l.skinName} (${l.wear})`).join(" + ")}{" "}
@@ -487,7 +604,7 @@ export default function ManipulatedSuggestions() {
                                 0–1 dentro da faixa própria de cada skin de entrada, não o float bruto
                                 — e pode virar um wear bem diferente do que "parece" na saída, se a
                                 skin de saída tiver faixa de float diferente da de entrada; meio da
-                                faixa de cada wear escolhido, não o float exato de cada anúncio). Custo
+                                pior limite de cada wear escolhido, não o float exato de cada anúncio). Custo
                                 de{" "}
                                 {fmtBRL(s.cost)} contra {fmtBRL(s.baselineCost)} da estratégia uniforme
                                 (10x a entrada mais barata){s.baselineRoi != null && (
@@ -601,7 +718,7 @@ export default function ManipulatedSuggestions() {
                                     )}
                                   </span>
                                   <span style={{ color: COLORS.textDim, whiteSpace: "nowrap" }}>
-                                    {o.prob.toFixed(1)}% · {fmtBRL(o.price)} · {o.minListings} anúncios
+                                    {o.prob.toFixed(1)}% · mercado {fmtBRL(o.price)} → líquido {fmtBRL(o.netPrice)} · {o.minListings} anúncios
                                   </span>
                                 </div>
                               ))}
