@@ -735,12 +735,18 @@ export async function computeManipulatedSuggestions({ minListings = 10 } = {}) {
           return floatMid != null ? { ...u, floatMid } : null;
         })
         .filter(Boolean);
+      // Restricted e Classified (as raridades que viram Classified/Covert —
+      // as saídas de maior valor) têm muito menos itens no catálogo inteiro
+      // que as raridades baixas, então dá pra buscar bem mais fundo sem o
+      // custo explodir. Pras raridades baixas (Consumer/Industrial/Mil-Spec,
+      // com milhares de linhas) mantém o corte pequeno.
+      const wildcardCap = tier === "Restricted" || tier === "Classified" ? 200 : 15;
       const lowFloat = [...withFloat]
         .sort((a, b) => a.floatMid - b.floatMid || a.wear.priceUsdCents - b.wear.priceUsdCents)
-        .slice(0, 15);
+        .slice(0, wildcardCap);
       const highFloat = [...withFloat]
         .sort((a, b) => b.floatMid - a.floatMid || a.wear.priceUsdCents - b.wear.priceUsdCents)
-        .slice(0, 15);
+        .slice(0, wildcardCap);
       const wildcardPool = [...lowFloat, ...highFloat];
 
       for (const [collectionTag, byRarity] of menu) {
