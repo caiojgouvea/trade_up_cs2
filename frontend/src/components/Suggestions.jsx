@@ -849,6 +849,18 @@ export default function Suggestions() {
                                     <span style={{ color: o.priceIsEstimate ? COLORS.gold : COLORS.textDim }}>
                                       ({wearLabel(o)})
                                     </span>
+                                    {o.marketHashName && (
+                                      <a
+                                        href={steamMarketUrl(o.marketHashName)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        style={{ color: COLORS.gold, display: "flex", alignItems: "center" }}
+                                        title="Abrir a saída no mercado — confira o preço e a liquidez real antes de decidir. A Steam pede pra marcar StatTrak™ e o wear certo na própria página."
+                                      >
+                                        <ExternalLink size={11} />
+                                      </a>
+                                    )}
                                   </span>
                                   <span style={{ color: COLORS.textDim, whiteSpace: "nowrap" }}>
                                     {o.prob.toFixed(1)}% · mercado {fmtBRL(o.price)} → líquido {fmtBRL(o.netPrice)} · {o.minListings} anúncios

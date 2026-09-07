@@ -161,6 +161,14 @@ function marketHashName({ weapon, skin, exterior, stattrak, souvenir }) {
   return `${prefix}${weapon} | ${skin} (${exterior})`;
 }
 
+// Nome de mercado de uma saída (outcome) de trade-up, pro link "abrir no
+// mercado" — precisa do wear previsto (senão não dá pra saber qual página
+// da Steam abrir) e do nome da skin (saídas tipo faca vanilla não têm).
+function outcomeMarketHashName(output, exterior, stattrak) {
+  if (!exterior || !output.skin) return null;
+  return marketHashName({ weapon: output.weapon, skin: output.skin, exterior, stattrak: !!stattrak, souvenir: false });
+}
+
 function priceForWear(skinGroup, exterior) {
   return skinGroup.wears.find((w) => w.exterior === exterior)?.priceUsdCents ?? null;
 }
@@ -481,6 +489,7 @@ async function computeFiveCovertSuggestions({ minListings = 10 } = {}) {
           predictedWear: predicted.wear,
           predictedFloatValue: predicted.predictedFloatValue,
           priceIsEstimate: false,
+          marketHashName: outcomeMarketHashName(output, predicted.wear, stattrak),
           minListings: output.minListings,
           iconUrl: output.iconUrl,
           floatRange: output.floatRange,
@@ -616,6 +625,7 @@ export async function computeSingleCollectionSuggestions({ minListings = 10 } = 
               predictedWear: predicted.wear,
               predictedFloatValue: predicted.predictedFloatValue,
               priceIsEstimate: false,
+              marketHashName: outcomeMarketHashName(o, predicted.wear, stattrak),
               minListings: o.minListings,
               iconUrl: o.iconUrl,
               floatRange: o.floatRange,
@@ -725,6 +735,7 @@ function outcomesAcrossGroups(groups, avgFloat, stattrak, rate) {
         predictedWear: predicted.wear,
         predictedFloatValue: predicted.predictedFloatValue,
         priceIsEstimate: predicted.priceIsEstimate,
+        marketHashName: outcomeMarketHashName(o, predicted.wear, stattrak),
         minListings: o.minListings,
         iconUrl: o.iconUrl,
         floatRange: o.floatRange,
@@ -1223,6 +1234,7 @@ export async function getCollectionOutcomeMenu(collectionTag) {
                 price: predicted.price,
                 predictedWear: predicted.wear,
                 priceIsEstimate: predicted.priceIsEstimate,
+                marketHashName: outcomeMarketHashName(o, predicted.wear, o.stattrak),
                 minListings: o.minListings,
                 iconUrl: o.iconUrl,
                 floatRange: o.floatRange,
