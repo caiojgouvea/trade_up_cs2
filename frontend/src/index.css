@@ -14,6 +14,14 @@ html, body, #root {
   background: #11141a;
 }
 
+/* Tabelas largas (muitas colunas) rolam dentro do próprio container
+   (ver overflowX: "auto" nos componentes) — a página em volta nunca deve
+   rolar na horizontal, senão o layout inteiro (barra de abas incluída)
+   se desloca de lado. */
+html, body {
+  overflow-x: hidden;
+}
+
 body {
   font-family: 'Space Grotesk', sans-serif;
 }

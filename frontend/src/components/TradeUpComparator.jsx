@@ -294,6 +294,7 @@ export default function TradeUpComparator() {
                   overflow: "hidden",
                 }}
               >
+                <div style={{ overflowX: "auto" }}>
                 <table className="tuc-table">
                   <thead>
                     <tr>
@@ -439,6 +440,7 @@ export default function TradeUpComparator() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
 
               <button
