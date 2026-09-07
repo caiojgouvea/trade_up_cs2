@@ -31,6 +31,8 @@ export default function ManipulatedSuggestions() {
   const [minListings, setMinListings] = useState(10);
   const [stattrakFilter, setStattrakFilter] = useState("all");
   const [textFilter, setTextFilter] = useState("");
+  const [minCost, setMinCost] = useState("");
+  const [maxCost, setMaxCost] = useState("");
   const [sort, setSort] = useState({ key: "stats.roi", dir: "desc" });
   const [expandedIdx, setExpandedIdx] = useState(null);
   const [calcOpenIdx, setCalcOpenIdx] = useState(null);
@@ -77,6 +79,8 @@ export default function ManipulatedSuggestions() {
 
   const filtered = useMemo(() => {
     const q = textFilter.trim().toLowerCase();
+    const min = minCost.trim() === "" ? null : Number(minCost.replace(",", "."));
+    const max = maxCost.trim() === "" ? null : Number(maxCost.replace(",", "."));
     let rows = suggestions;
     if (stattrakFilter !== "all") {
       const want = stattrakFilter === "stattrak";
@@ -90,6 +94,8 @@ export default function ManipulatedSuggestions() {
           s.outcomes.some((o) => o.name.toLowerCase().includes(q))
       );
     }
+    if (min != null && !isNaN(min)) rows = rows.filter((s) => s.cost >= min);
+    if (max != null && !isNaN(max)) rows = rows.filter((s) => s.cost <= max);
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...rows].sort((a, b) => {
       const aFav = favorites.has(manipulatedKey(a));
@@ -101,7 +107,7 @@ export default function ManipulatedSuggestions() {
       if (typeof av === "string") return dir * av.localeCompare(bv);
       return dir * (av - bv);
     });
-  }, [suggestions, stattrakFilter, textFilter, sort, favorites]);
+  }, [suggestions, stattrakFilter, textFilter, minCost, maxCost, sort, favorites]);
 
   return (
     <div
@@ -217,6 +223,24 @@ export default function ManipulatedSuggestions() {
             value={textFilter}
             onChange={(e) => setTextFilter(e.target.value)}
           />
+          <label style={{ fontSize: 11, color: COLORS.textDim, display: "flex", alignItems: "center", gap: 6 }}>
+            Custo
+            <input
+              className="tuc-input"
+              style={{ width: 80 }}
+              placeholder="mín."
+              value={minCost}
+              onChange={(e) => setMinCost(e.target.value)}
+            />
+            <span>–</span>
+            <input
+              className="tuc-input"
+              style={{ width: 80 }}
+              placeholder="máx."
+              value={maxCost}
+              onChange={(e) => setMaxCost(e.target.value)}
+            />
+          </label>
           {rate && (
             <span style={{ fontSize: 11, color: COLORS.textDim, marginLeft: "auto" }}>
               1 USD ≈ {fmtBRL(rate)}
