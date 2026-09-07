@@ -106,14 +106,21 @@ function priceForWear(skinGroup, exterior) {
 // normalizeFloat em floatMath.js. Sem isso, uma skin com faixa estreita
 // (ex: 0–0.5) tem seu desgaste relativo subestimado pela metade, o que
 // explica saídas "piores que o esperado" mesmo comprando Factory New.
-// Pega o meio (bruto) da banda de wear escolhida — já recortada pelo
-// min/max real da skin — e normaliza pra essa mesma faixa.
+//
+// Usa o PIOR (mais alto) float dentro da banda do wear escolhido, não o
+// meio — confirmado na prática: dentro do mesmo wear, o anúncio mais
+// barato tende a ter o float mais alto daquele wear (float baixo dentro
+// da categoria é raro e vendido bem mais caro, mesmo sem trocar de wear).
+// Assumir o meio da faixa era otimista demais: previa um float de entrada
+// melhor do que o que dá pra comprar pelo preço mostrado, inflando o
+// float médio previsto do contrato — e a chance de uma saída realmente
+// vir no wear calculado.
 function assumedFloatForWear(skinGroup, exterior) {
   if (!skinGroup.floatRange) return null;
   const band = bandForWear(skinGroup, exterior);
   if (!band) return null;
-  const rawMid = (band.min + band.max) / 2;
-  return normalizeFloat(rawMid, skinGroup.floatRange.min, skinGroup.floatRange.max);
+  const rawWorstCase = band.max;
+  return normalizeFloat(rawWorstCase, skinGroup.floatRange.min, skinGroup.floatRange.max);
 }
 
 // Quando o wear previsto não tem preço confiável, o vizinho mais próximo (por
