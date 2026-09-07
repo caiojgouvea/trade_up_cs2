@@ -149,10 +149,14 @@ export default function ManipulatedSuggestions() {
           <AlertTriangle size={16} color={COLORS.gold} style={{ flexShrink: 0, marginTop: 1 }} />
           <div>
             <strong style={{ color: COLORS.gold }}>Cuidado ao comprar:</strong> a mistura só funciona
-            se você comprar exatamente o wear indicado de cada perna — errar isso destrói o float
-            calculado (às vezes o preço entre wears é centavos de diferença, fácil de comprar o
-            errado sem perceber). Use o link "abrir no mercado" de cada perna abaixo — ele leva
-            direto pra página daquele wear específico, não pra busca geral do item.
+            se você comprar exatamente o wear (e StatTrak™, quando marcado) indicado de cada
+            perna — errar isso destrói o float calculado. O link "abrir no mercado" leva pra
+            página certa da arma+skin, mas a Steam mudou o site: <strong>StatTrak™ e cada wear
+            agora são filtros dentro da mesma página</strong>, não páginas separadas — o link NÃO
+            seleciona isso sozinho. Depois de abrir, marque manualmente o filtro StatTrak™ (se a
+            perna pedir) e o wear exato antes de comprar. Isso pegou um usuário de surpresa: ele
+            clicou no link de uma perna StatTrak e acabou comprando a versão Normal por engano,
+            porque a página abre com Normal marcado por padrão.
           </div>
         </div>
         {error && (
@@ -327,7 +331,7 @@ export default function ManipulatedSuggestions() {
                                     rel="noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     style={{ color: COLORS.gold, display: "flex", alignItems: "center" }}
-                                    title="Abrir no mercado (página exata desse wear)"
+                                    title="Abrir no mercado — marque o filtro StatTrak™ e wear certo na página, o link não seleciona sozinho"
                                   >
                                     <ExternalLink size={12} />
                                   </a>
@@ -459,7 +463,9 @@ export default function ManipulatedSuggestions() {
                                 }}
                               >
                                 <span style={{ fontSize: 10, color: COLORS.textDim, textTransform: "uppercase" }}>
-                                  Comprar exatamente isso (clique pra abrir a página certa de cada wear):
+                                  Comprar exatamente isso (o link abre a página da arma+skin — marque
+                                  StatTrak™ e o wear na página antes de comprar, o link não escolhe
+                                  sozinho):
                                 </span>
                                 {s.legs.map((l, i) => (
                                   <a

@@ -431,7 +431,7 @@ export default function Suggestions() {
                                     rel="noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     style={{ color: COLORS.gold, marginLeft: 6, display: "inline-flex", verticalAlign: "middle" }}
-                                    title="Abrir no mercado (página exata desse item)"
+                                    title="Abrir no mercado — a Steam mudou o site: StatTrak™/Lembrança e wear agora são filtros dentro da mesma página, não escolhidos pelo link. Marque manualmente antes de comprar."
                                   >
                                     <ExternalLink size={11} />
                                   </a>
