@@ -13,10 +13,15 @@ function minListingsFrom(req) {
   return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 10;
 }
 
+function currencyFrom(req) {
+  return req.query.currency === "brl" ? "brl" : "usd";
+}
+
 suggestionsRouter.get("/", async (req, res) => {
   const minListings = minListingsFrom(req);
+  const currency = currencyFrom(req);
   try {
-    const result = await computeSingleCollectionSuggestions({ minListings });
+    const result = await computeSingleCollectionSuggestions({ minListings, currency });
     res.json(result);
   } catch (e) {
     res.status(502).json({ error: e.message });
@@ -30,24 +35,26 @@ suggestionsRouter.get("/", async (req, res) => {
 // refresh ter rodado.
 suggestionsRouter.get("/manipulated", async (req, res) => {
   const minListings = minListingsFrom(req);
+  const currency = currencyFrom(req);
+  const cacheKind = `manipulated_${currency}`;
   try {
-    const cached = getSuggestionCache("manipulated");
-    // O cache guarda um único cálculo. Só é válido quando foi calculado
-    // com o mesmo piso de liquidez solicitado; caso contrário, resultados
-    // com poucos anúncios poderiam aparecer ao aumentar esse filtro.
-    if (cached && cached.minListings === minListings && cached.pricingVersion === "net-strict-v2") {
+    const cached = getSuggestionCache(cacheKind);
+    // O cache guarda um único cálculo por moeda. Só é válido quando foi
+    // calculado com o mesmo piso de liquidez solicitado; caso contrário,
+    // resultados com poucos anúncios poderiam aparecer ao aumentar esse filtro.
+    if (cached && cached.minListings === minListings && cached.pricingVersion === "net-strict-v4") {
       return res.json(cached);
     }
-    const result = await computeManipulatedSuggestions({ minListings });
+    const result = await computeManipulatedSuggestions({ minListings, currency });
     const computedAt = new Date().toISOString();
-    saveSuggestionCache("manipulated", { minListings, exhaustive: false, ...result });
+    saveSuggestionCache(cacheKind, { minListings, exhaustive: false, ...result });
     recordSuggestionHistory({ computedAt, exhaustive: false, suggestions: result.suggestions });
     res.json({
       ...result,
       computedAt,
       minListings,
       exhaustive: false,
-      pricingVersion: "net-strict-v2",
+      pricingVersion: "net-strict-v4",
     });
   } catch (e) {
     res.status(502).json({ error: e.message });
@@ -60,8 +67,9 @@ suggestionsRouter.get("/manipulated", async (req, res) => {
 // mas cabe rodar de um dia pro outro.
 suggestionsRouter.post("/manipulated/refresh", (req, res) => {
   const minListings = minListingsFrom(req);
+  const currency = currencyFrom(req);
   const exhaustive = req.query.exhaustive === "1" || req.query.exhaustive === "true";
-  const status = startManipulatedJob({ minListings, exhaustive });
+  const status = startManipulatedJob({ minListings, exhaustive, currency });
   res.json(status);
 });
 

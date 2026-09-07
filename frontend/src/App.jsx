@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Crosshair, Layers, Sparkles, Shuffle, History } from "lucide-react";
+import { Crosshair, Layers, Sparkles, Shuffle, History, Globe } from "lucide-react";
 import { COLORS } from "./lib/colors";
+import { useI18n } from "./lib/i18n";
 import TradeUpComparator from "./components/TradeUpComparator";
 import CollectionsExplorer from "./components/CollectionsExplorer";
 import Suggestions from "./components/Suggestions";
@@ -8,23 +9,36 @@ import ManipulatedSuggestions from "./components/ManipulatedSuggestions";
 import SuggestionHistory from "./components/SuggestionHistory";
 
 const TABS = [
-  { id: "suggestions", label: "Sugestões", icon: Sparkles },
-  { id: "manipulated", label: "Manipulados", icon: Shuffle },
-  { id: "history", label: "Histórico", icon: History },
-  { id: "comparator", label: "Comparador manual", icon: Crosshair },
-  { id: "collections", label: "Coleções & Preços", icon: Layers },
+  { id: "suggestions", label: "Suggestions", icon: Sparkles },
+  { id: "manipulated", label: "Manipulated", icon: Shuffle },
+  { id: "history", label: "History", icon: History },
+  { id: "comparator", label: "Manual comparator", icon: Crosshair },
+  { id: "collections", label: "Collections & Prices", icon: Layers },
 ];
+
+const selectStyle = {
+  background: COLORS.panel,
+  color: COLORS.text,
+  border: `1px solid ${COLORS.border}`,
+  borderRadius: 6,
+  padding: "5px 8px",
+  fontFamily: "'Space Grotesk', sans-serif",
+  fontSize: 12,
+  cursor: "pointer",
+};
 
 function App() {
   const [tab, setTab] = useState("suggestions");
+  const { lang, setLang, currency, setCurrency, t } = useI18n();
 
   return (
     <div style={{ background: COLORS.bg, minHeight: "100vh" }}>
       <div
         style={{
           display: "flex",
+          alignItems: "center",
           gap: 4,
-          maxWidth: 1200,
+          maxWidth: "min(1800px, 96vw)",
           margin: "0 auto",
           padding: "16px 20px 0",
         }}
@@ -52,9 +66,21 @@ function App() {
             }}
           >
             <Icon size={14} />
-            {label}
+            {t(label)}
           </button>
         ))}
+
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          <Globe size={14} color={COLORS.textDim} />
+          <select value={lang} onChange={(e) => setLang(e.target.value)} style={selectStyle}>
+            <option value="en">English</option>
+            <option value="pt">Português</option>
+          </select>
+          <select value={currency} onChange={(e) => setCurrency(e.target.value)} style={selectStyle}>
+            <option value="usd">USD ($)</option>
+            <option value="brl">BRL (R$)</option>
+          </select>
+        </div>
       </div>
 
       {tab === "suggestions" && <Suggestions />}

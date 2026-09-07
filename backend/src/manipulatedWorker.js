@@ -9,8 +9,8 @@ import { computeManipulatedSuggestions } from "./tradeUpEngine.js";
 
 async function run() {
   try {
-    const { minListings, exhaustive } = workerData;
-    const result = await computeManipulatedSuggestions({ minListings, exhaustive });
+    const { minListings, exhaustive, currency } = workerData;
+    const result = await computeManipulatedSuggestions({ minListings, exhaustive, currency });
     parentPort.postMessage({ ok: true, result });
   } catch (e) {
     parentPort.postMessage({ ok: false, error: e.message });

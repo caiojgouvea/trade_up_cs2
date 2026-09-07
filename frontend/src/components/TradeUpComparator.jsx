@@ -15,15 +15,17 @@ import { Plus, Trash2, ChevronDown, ChevronUp, Crosshair, RotateCcw } from "luci
 import { COLORS } from "../lib/colors";
 import { computeStats, fmtBRL } from "../lib/tradeUpMath";
 import { loadContracts, saveContracts } from "../lib/storage";
+import { useI18n } from "../lib/i18n";
 import CustomTooltip from "./CustomTooltip";
 
-function breakEvenLabel(stats) {
-  if (stats.breakEvenHits10 == null) return "nunca";
-  if (stats.breakEvenHits10 === 0) return "sem risco";
+function breakEvenLabel(stats, t) {
+  if (stats.breakEvenHits10 == null) return t("never");
+  if (stats.breakEvenHits10 === 0) return t("risk-free");
   return `≥${stats.breakEvenHits10}/10`;
 }
 
 export default function TradeUpComparator() {
+  const { t, currency } = useI18n();
   const [contracts, setContracts] = useState(() => loadContracts());
   const [expandedId, setExpandedId] = useState(null);
   const [formError, setFormError] = useState("");
@@ -64,10 +66,10 @@ export default function TradeUpComparator() {
     const validOutcomes = outcomes.filter(
       (o) => o.name.trim() && o.prob !== "" && o.price !== ""
     );
-    if (!name.trim()) return setFormError("Dá um nome pro contrato.");
-    if (!cost || Number(cost) <= 0) return setFormError("Custo total dos 10 inputs precisa ser > 0.");
+    if (!name.trim()) return setFormError(t("Give the contract a name."));
+    if (!cost || Number(cost) <= 0) return setFormError(t("Total cost of the 10 inputs must be > 0."));
     if (validOutcomes.length === 0)
-      return setFormError("Adiciona pelo menos 1 resultado possível com % e preço.");
+      return setFormError(t("Add at least 1 possible outcome with % and price."));
 
     const newContract = {
       id: Date.now(),
@@ -102,6 +104,8 @@ export default function TradeUpComparator() {
     id: c.id,
   }));
 
+  const currencySymbol = currency === "brl" ? "R$" : "$";
+
   return (
     <div
       style={{
@@ -116,12 +120,12 @@ export default function TradeUpComparator() {
       <div style={{ maxWidth: "min(1800px, 96vw)", margin: "0 auto 24px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Crosshair size={22} color={COLORS.gold} />
-          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Comparador de Trade-Ups</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{t("Trade-Up Comparator")}</h1>
         </div>
         <p style={{ color: COLORS.textDim, fontSize: 13, marginTop: 6, maxWidth: 640 }}>
-          Cadastre os contratos que você mesmo calculou (custo dos 10 inputs + resultados possíveis com
-          % e preço de mercado) e compare risco contra retorno num só lugar. O retorno usa o valor líquido
-          estimado após a taxa de 15% do Mercado Steam.
+          {t(
+            "Register contracts you calculated yourself (cost of the 10 inputs + possible outcomes with % and market price) and compare risk against return in one place. Return uses the estimated net value after the Steam Market's 15% fee."
+          )}
         </p>
       </div>
 
@@ -136,40 +140,40 @@ export default function TradeUpComparator() {
             alignSelf: "start",
           }}
         >
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Novo contrato</div>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>{t("New contract")}</div>
 
-          <label style={{ fontSize: 11, color: COLORS.textDim }}>Nome do contrato</label>
+          <label style={{ fontSize: 11, color: COLORS.textDim }}>{t("Contract name")}</label>
           <input
             className="tuc-input"
             style={{ marginTop: 4, marginBottom: 10 }}
-            placeholder="ex: Kilowatt Restricted → AK Inheritance"
+            placeholder={t("e.g. Kilowatt Restricted → AK Inheritance")}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
 
-          <label style={{ fontSize: 11, color: COLORS.textDim }}>Custo total dos 10 inputs (R$)</label>
+          <label style={{ fontSize: 11, color: COLORS.textDim }}>{t("Total cost of the 10 inputs")} ({currencySymbol})</label>
           <input
             className="tuc-input"
             style={{ marginTop: 4, marginBottom: 14 }}
-            placeholder="ex: 180"
+            placeholder={t("e.g. 180")}
             type="number"
             value={cost}
             onChange={(e) => setCost(e.target.value)}
           />
 
-          <label style={{ fontSize: 11, color: COLORS.textDim }}>Resultados possíveis</label>
+          <label style={{ fontSize: 11, color: COLORS.textDim }}>{t("Possible outcomes")}</label>
           <div style={{ marginTop: 6 }}>
             <div className="tuc-outcome-row" style={{ marginBottom: 4 }}>
-              <span style={{ fontSize: 10, color: COLORS.textDim }}>Skin</span>
+              <span style={{ fontSize: 10, color: COLORS.textDim }}>{t("Skin")}</span>
               <span style={{ fontSize: 10, color: COLORS.textDim }}>%</span>
-              <span style={{ fontSize: 10, color: COLORS.textDim }}>R$</span>
+              <span style={{ fontSize: 10, color: COLORS.textDim }}>{currencySymbol}</span>
               <span />
             </div>
             {outcomes.map((o, i) => (
               <div className="tuc-outcome-row" key={i}>
                 <input
                   className="tuc-input"
-                  placeholder="ex: AK Inheritance"
+                  placeholder={t("e.g. AK Inheritance")}
                   value={o.name}
                   onChange={(e) => updateOutcome(i, "name", e.target.value)}
                 />
@@ -187,7 +191,7 @@ export default function TradeUpComparator() {
                   value={o.price}
                   onChange={(e) => updateOutcome(i, "price", e.target.value)}
                 />
-                <button className="tuc-icon-btn" onClick={() => removeOutcomeRow(i)} aria-label="Remover">
+                <button className="tuc-icon-btn" onClick={() => removeOutcomeRow(i)} aria-label={t("Remove")}>
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -198,7 +202,7 @@ export default function TradeUpComparator() {
             style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
             onClick={addOutcomeRow}
           >
-            <Plus size={13} /> Adicionar resultado
+            <Plus size={13} /> {t("Add outcome")}
           </button>
 
           {formError && (
@@ -206,7 +210,7 @@ export default function TradeUpComparator() {
           )}
 
           <button className="tuc-btn" style={{ marginTop: 14, width: "100%" }} onClick={handleAdd}>
-            Salvar contrato
+            {t("Save contract")}
           </button>
         </div>
 
@@ -224,7 +228,7 @@ export default function TradeUpComparator() {
                 fontSize: 13,
               }}
             >
-              Nenhum contrato cadastrado ainda. Preenche o formulário ao lado pra começar a comparar.
+              {t("No contracts registered yet. Fill in the form on the side to start comparing.")}
             </div>
           ) : (
             <>
@@ -237,18 +241,18 @@ export default function TradeUpComparator() {
                   marginBottom: 16,
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>Risco × Retorno</div>
+                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>{t("Risk × Return")}</div>
                 <ResponsiveContainer width="100%" height={280}>
                   <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 0 }}>
                     <CartesianGrid stroke={COLORS.border} strokeDasharray="3 3" />
                     <XAxis
                       type="number"
                       dataKey="probLoss"
-                      name="Risco"
+                      name={t("Risk")}
                       domain={[0, 100]}
                       tick={{ fill: COLORS.textDim, fontSize: 11, fontFamily: "IBM Plex Mono" }}
                       label={{
-                        value: "Risco de perda (%)",
+                        value: t("Loss risk (%)"),
                         position: "insideBottom",
                         offset: -12,
                         fill: COLORS.textDim,
@@ -258,10 +262,10 @@ export default function TradeUpComparator() {
                     <YAxis
                       type="number"
                       dataKey="roi"
-                      name="Retorno"
+                      name={t("Return")}
                       tick={{ fill: COLORS.textDim, fontSize: 11, fontFamily: "IBM Plex Mono" }}
                       label={{
-                        value: "Retorno esperado (%)",
+                        value: t("Expected return (%)"),
                         angle: -90,
                         position: "insideLeft",
                         fill: COLORS.textDim,
@@ -279,10 +283,10 @@ export default function TradeUpComparator() {
                   </ScatterChart>
                 </ResponsiveContainer>
                 <div style={{ display: "flex", gap: 16, fontSize: 11, color: COLORS.textDim, marginTop: 4 }}>
-                  <span><span style={{ color: COLORS.green }}>●</span> Bom contrato</span>
-                  <span><span style={{ color: COLORS.gold }}>●</span> Arriscado</span>
-                  <span><span style={{ color: COLORS.rust }}>●</span> Furada</span>
-                  <span style={{ marginLeft: "auto" }}>tamanho da bolha = custo</span>
+                  <span><span style={{ color: COLORS.green }}>●</span> {t("Good deal")}</span>
+                  <span><span style={{ color: COLORS.gold }}>●</span> {t("Risky")}</span>
+                  <span><span style={{ color: COLORS.rust }}>●</span> {t("Trap")}</span>
+                  <span style={{ marginLeft: "auto" }}>{t("bubble size = cost")}</span>
                 </div>
               </div>
 
@@ -298,14 +302,14 @@ export default function TradeUpComparator() {
                 <table className="tuc-table">
                   <thead>
                     <tr>
-                      <th>Contrato</th>
-                      <th>Custo</th>
-                      <th title="Lucro líquido se sair a saída mais cara possível">Melhor caso</th>
-                      <th title="Média ponderada pelas chances de cada saída">Esperado</th>
-                      <th title="Lucro líquido se sair a saída mais barata possível">Pior caso</th>
-                      <th>Risco</th>
-                      <th title="Rodando esse contrato 10x, quantos acertos você precisa pra não sair no prejuízo">Empate em 10x</th>
-                      <th>Veredito</th>
+                      <th>{t("Contract")}</th>
+                      <th>{t("Cost")}</th>
+                      <th title={t("Net profit if the most expensive possible output comes out")}>{t("Best case")}</th>
+                      <th title={t("Average weighted by the odds of each output")}>{t("Expected")}</th>
+                      <th title={t("Net profit if the cheapest possible output comes out")}>{t("Worst case")}</th>
+                      <th>{t("Risk")}</th>
+                      <th title={t("Running this contract 10x, how many hits you need to not end up at a loss")}>{t("Break-even in 10x")}</th>
+                      <th>{t("Verdict")}</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -338,9 +342,9 @@ export default function TradeUpComparator() {
                           <td>{c.stats.probLoss.toFixed(0)}%</td>
                           <td
                             style={{ color: c.stats.breakEvenHits10 == null ? COLORS.rust : COLORS.textDim, fontSize: 11 }}
-                            title="Acertos = saídas cujo valor líquido cobre o custo. Assume ganho médio e perda média constantes a cada tentativa (aproximação)."
+                            title={t("Hits = outputs whose net value covers the cost. Assumes constant average win and average loss per attempt (approximation).")}
                           >
-                            {breakEvenLabel(c.stats)}
+                            {breakEvenLabel(c.stats, t)}
                           </td>
                           <td>
                             <span
@@ -355,7 +359,7 @@ export default function TradeUpComparator() {
                                 textAlign: "center",
                               }}
                             >
-                              {c.stats.verdict}
+                              {t(c.stats.verdict)}
                             </span>
                           </td>
                           <td>
@@ -365,7 +369,7 @@ export default function TradeUpComparator() {
                                 e.stopPropagation();
                                 handleRemoveContract(c.id);
                               }}
-                              aria-label="Excluir contrato"
+                              aria-label={t("Delete contract")}
                             >
                               <Trash2 size={14} />
                             </button>
@@ -376,18 +380,17 @@ export default function TradeUpComparator() {
                             <td colSpan={9} style={{ background: COLORS.panelAlt }}>
                               {c.stats.probOff && (
                                 <div style={{ color: COLORS.gold, fontSize: 11, marginBottom: 8 }}>
-                                  Atenção: as probabilidades somam {c.stats.totalProbRaw.toFixed(0)}%, não 100%.
-                                  O cálculo normalizou automaticamente.
+                                  {t("Warning: the probabilities add up to")} {c.stats.totalProbRaw.toFixed(0)}%, {t("not 100%. The calculation normalized automatically.")}
                                 </div>
                               )}
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
-                                Melhor caso: {fmtBRL(c.stats.bestCaseProfit)} ({c.stats.bestCaseRoi >= 0 ? "+" : ""}
-                                {c.stats.bestCaseRoi.toFixed(1)}%) · Pior caso: {fmtBRL(c.stats.worstCaseProfit)} (
+                                {t("Best case")}: {fmtBRL(c.stats.bestCaseProfit)} ({c.stats.bestCaseRoi >= 0 ? "+" : ""}
+                                {c.stats.bestCaseRoi.toFixed(1)}%) · {t("Worst case")}: {fmtBRL(c.stats.worstCaseProfit)} (
                                 {c.stats.worstCaseRoi >= 0 ? "+" : ""}
                                 {c.stats.worstCaseRoi.toFixed(1)}%)
                               </div>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
-                                Valor esperado líquido: {fmtBRL(c.stats.ev)} · Lucro líquido esperado: {fmtBRL(c.stats.evProfit)} · valor bruto: {fmtBRL(c.stats.grossEv)}
+                                {t("Net expected value")}: {fmtBRL(c.stats.ev)} · {t("Net expected profit")}: {fmtBRL(c.stats.evProfit)} · {t("gross value")}: {fmtBRL(c.stats.grossEv)}
                               </div>
                               <div
                                 style={{
@@ -399,19 +402,18 @@ export default function TradeUpComparator() {
                                   border: `1px solid ${COLORS.border}`,
                                 }}
                               >
-                                <strong>Rodando esse contrato 10x</strong> (custo total {fmtBRL(c.cost * 10)}):
-                                ganho médio quando acerta {fmtBRL(c.stats.avgWinProfit)} por vez, perda média
-                                quando erra {fmtBRL(c.stats.avgLossProfit)} por vez.{" "}
+                                <strong>{t("Running this contract 10x")}</strong> ({t("total cost")} {fmtBRL(c.cost * 10)}):{" "}
+                                {t("average win")} {fmtBRL(c.stats.avgWinProfit)} {t("per hit")}, {t("average loss")}{" "}
+                                {fmtBRL(c.stats.avgLossProfit)} {t("per miss")}.{" "}
                                 {c.stats.breakEvenHits10 == null ? (
                                   <span style={{ color: COLORS.rust }}>
-                                    Nenhuma saída cobre o custo — não tem número de acertos que compense.
+                                    {t("No output covers the cost — no number of hits makes this worth it.")}
                                   </span>
                                 ) : c.stats.breakEvenHits10 === 0 ? (
-                                  <span style={{ color: COLORS.green }}>Nenhuma saída dá prejuízo — sem risco de perder no total das 10x.</span>
+                                  <span style={{ color: COLORS.green }}>{t("No output results in a loss — no risk of losing across all 10x.")}</span>
                                 ) : (
                                   <span style={{ color: COLORS.green }}>
-                                    Acertando pelo menos <strong>{c.stats.breakEvenHits10} de 10</strong> tentativas, você já sai no
-                                    positivo ou empatado (lucro esperado ×10: {fmtBRL(c.stats.evProfit * 10)}).
+                                    {t("Hitting at least")} <strong>{c.stats.breakEvenHits10} {t("of 10")}</strong> {t("attempts already gets you to break-even or profit")} ({t("expected profit")} ×10: {fmtBRL(c.stats.evProfit * 10)}).
                                   </span>
                                 )}
                               </div>
@@ -448,7 +450,7 @@ export default function TradeUpComparator() {
                 style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
                 onClick={() => persist([])}
               >
-                <RotateCcw size={13} /> Limpar todos os contratos
+                <RotateCcw size={13} /> {t("Clear all contracts")}
               </button>
             </>
           )}

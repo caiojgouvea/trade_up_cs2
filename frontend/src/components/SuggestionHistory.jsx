@@ -4,6 +4,7 @@ import { COLORS } from "../lib/colors";
 import { fmtBRL, fmtFloat } from "../lib/tradeUpMath";
 import { rarityColor } from "../lib/rarity";
 import { getSuggestionHistory } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 import ItemThumb from "./ItemThumb";
 import Pagination from "./Pagination";
 
@@ -11,26 +12,26 @@ function steamMarketUrl(marketHashName) {
   return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketHashName)}`;
 }
 
-function wearLabel(o) {
-  if (!o.predictedWear) return "média entre wears";
+function wearLabel(o, t) {
+  if (!o.predictedWear) return t("average across wears");
   const withFloat = o.predictedFloatValue != null ? ` · float ${fmtFloat(o.predictedFloatValue)}` : "";
-  return (o.priceIsEstimate ? `${o.predictedWear}, preço estimado` : o.predictedWear) + withFloat;
+  return (o.priceIsEstimate ? `${o.predictedWear}, ${t("estimated price")}` : o.predictedWear) + withFloat;
 }
 
-function breakEvenLabel(stats) {
-  if (stats.breakEvenHits10 == null) return "nunca";
-  if (stats.breakEvenHits10 === 0) return "sem risco";
+function breakEvenLabel(stats, t) {
+  if (stats.breakEvenHits10 == null) return t("never");
+  if (stats.breakEvenHits10 === 0) return t("risk-free");
   return `≥${stats.breakEvenHits10}/10`;
 }
 
-const SORT_OPTIONS = [
-  { value: "bestCaseRoi", label: "Melhor caso" },
-  { value: "roi", label: "Esperado" },
-  { value: "worstCaseRoi", label: "Pior caso" },
-  { value: "computedAt", label: "Mais recente" },
-];
-
 export default function SuggestionHistory() {
+  const { t } = useI18n();
+  const SORT_OPTIONS = [
+    { value: "bestCaseRoi", label: t("Best case") },
+    { value: "roi", label: t("Expected") },
+    { value: "worstCaseRoi", label: t("Worst case") },
+    { value: "computedAt", label: t("Most recent") },
+  ];
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState(null);
@@ -90,22 +91,21 @@ export default function SuggestionHistory() {
       <div style={{ maxWidth: "min(1800px, 96vw)", margin: "0 auto 20px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <History size={18} color={COLORS.gold} />
-          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Histórico de achados</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{t("Findings history")}</h1>
         </div>
         <p style={{ color: COLORS.textDim, fontSize: 13, marginTop: 6, maxWidth: 720 }}>
-          Todo contrato "manipulado" (misturando entradas e/ou coleções) que já apareceu numa
-          rodada de recálculo — manual ou "busca exaustiva" — fica registrado aqui pra sempre,
-          mesmo que o preço mude depois e ele suma da lista atual. Dispare rodadas na aba
-          "Manipulados" pra alimentar esse histórico.
+          {t(
+            'Every "manipulated" contract (mixing inputs and/or collections) that has ever shown up in a recalculation run — manual or "exhaustive search" — stays logged here forever, even if the price changes later and it disappears from the current list. Trigger runs on the "Manipulated" tab to feed this history.'
+          )}
         </p>
         {stats && (
           <div style={{ fontSize: 11, color: COLORS.textDim, marginTop: 4, fontFamily: "'IBM Plex Mono', monospace" }}>
-            {stats.entries} achados registrados em {stats.runs} rodada(s)
+            {stats.entries} {t("findings logged across")} {stats.runs} {t("run(s)")}
             {stats.firstAt && (
               <>
                 {" "}
-                · primeira em {new Date(stats.firstAt).toLocaleString("pt-BR")} · última em{" "}
-                {new Date(stats.lastAt).toLocaleString("pt-BR")}
+                · {t("first at")} {new Date(stats.firstAt).toLocaleString()} · {t("last at")}{" "}
+                {new Date(stats.lastAt).toLocaleString()}
               </>
             )}
           </div>
@@ -143,7 +143,7 @@ export default function SuggestionHistory() {
           }}
         >
           <label style={{ fontSize: 11, color: COLORS.textDim, display: "flex", alignItems: "center", gap: 6 }}>
-            Ordenar por
+            {t("Sort by")}
             <select
               className="tuc-input"
               style={{ width: 150 }}
@@ -161,7 +161,7 @@ export default function SuggestionHistory() {
             </select>
           </label>
           <label style={{ fontSize: 11, color: COLORS.textDim, display: "flex", alignItems: "center", gap: 6 }}>
-            Esperado mín. %
+            {t("Min. expected %")}
             <input
               className="tuc-input"
               style={{ width: 70 }}
@@ -172,7 +172,7 @@ export default function SuggestionHistory() {
             />
           </label>
           <label style={{ fontSize: 11, color: COLORS.textDim, display: "flex", alignItems: "center", gap: 6 }}>
-            Melhor caso mín. %
+            {t("Min. best case %")}
             <input
               className="tuc-input"
               style={{ width: 70 }}
@@ -185,7 +185,7 @@ export default function SuggestionHistory() {
         </div>
 
         {loading ? (
-          <div style={{ color: COLORS.textDim, fontSize: 13 }}>Carregando...</div>
+          <div style={{ color: COLORS.textDim, fontSize: 13 }}>{t("Loading...")}</div>
         ) : rows.length === 0 ? (
           <div
             style={{
@@ -198,8 +198,9 @@ export default function SuggestionHistory() {
               fontSize: 13,
             }}
           >
-            Nada registrado ainda. Vá na aba "Manipulados" e clique em "Recalcular" ou "Busca
-            exaustiva" pelo menos uma vez — cada rodada alimenta esse histórico.
+            {t(
+              'Nothing logged yet. Go to the "Manipulated" tab and click "Recalculate" or "Exhaustive search" at least once — each run feeds this history.'
+            )}
           </div>
         ) : (
           <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 8, overflow: "hidden" }}>
@@ -208,17 +209,17 @@ export default function SuggestionHistory() {
                 <thead>
                   <tr>
                     <th></th>
-                    <th>Coleção</th>
-                    <th>Raridade</th>
+                    <th>{t("Collection")}</th>
+                    <th>{t("Rarity")}</th>
                     <th>ST</th>
-                    <th>Pernas</th>
-                    <th>Custo</th>
-                    <th>Melhor caso</th>
-                    <th>Esperado</th>
-                    <th>Pior caso</th>
-                    <th>Risco</th>
-                    <th title="Rodando esse contrato 10x, quantos acertos você precisa pra não sair no prejuízo">Empate em 10x</th>
-                    <th>Achado em</th>
+                    <th>{t("Legs")}</th>
+                    <th>{t("Cost")}</th>
+                    <th>{t("Best case")}</th>
+                    <th>{t("Expected")}</th>
+                    <th>{t("Worst case")}</th>
+                    <th>{t("Risk")}</th>
+                    <th title={t("Running this contract 10x, how many hits you need to not end up at a loss")}>{t("Break-even in 10x")}</th>
+                    <th>{t("Found at")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -230,7 +231,7 @@ export default function SuggestionHistory() {
                           {s.collectionName}
                           {s.crossCollection && (
                             <span
-                              title="Mistura mais de uma coleção"
+                              title={t("Mixes more than one collection")}
                               style={{
                                 fontSize: 9,
                                 fontWeight: 600,
@@ -242,7 +243,7 @@ export default function SuggestionHistory() {
                                 textTransform: "uppercase",
                               }}
                             >
-                              Cross-coleção
+                              {t("Cross-collection")}
                             </span>
                           )}
                         </td>
@@ -271,19 +272,19 @@ export default function SuggestionHistory() {
                         <td>{s.stats.probLoss.toFixed(0)}%</td>
                         <td
                           style={{ color: s.stats.breakEvenHits10 == null ? COLORS.rust : COLORS.textDim, fontSize: 11 }}
-                          title="Acertos = saídas cujo valor líquido cobre o custo. Assume ganho médio e perda média constantes a cada tentativa (aproximação)."
+                          title={t("Hits = outputs whose net value covers the cost. Assumes constant average win and average loss per attempt (approximation).")}
                         >
-                          {breakEvenLabel(s.stats)}
+                          {breakEvenLabel(s.stats, t)}
                         </td>
                         <td style={{ fontSize: 11, color: COLORS.textDim, whiteSpace: "nowrap" }}>
-                          {new Date(s.computedAt).toLocaleString("pt-BR")}
+                          {new Date(s.computedAt).toLocaleString()}
                         </td>
                       </tr>
                       {expandedId === s.id && (
                         <tr>
                           <td colSpan={12} style={{ background: COLORS.panelAlt }}>
                             <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 10 }}>
-                              Mistura: {s.legs?.map((l) => `${l.count}x ${l.isSouvenir ? "Lembrança " : ""}${l.skinName} (${l.wear})`).join(" + ")}
+                              {t("Mix")}: {s.legs?.map((l) => `${l.count}x ${l.isSouvenir ? t("Souvenir") + " " : ""}${l.skinName} (${l.wear})`).join(" + ")}
                             </div>
                             <div
                               style={{
@@ -295,19 +296,18 @@ export default function SuggestionHistory() {
                                 border: `1px solid ${COLORS.border}`,
                               }}
                             >
-                              <strong>Rodando esse contrato 10x</strong> (custo total {fmtBRL(s.cost * 10)}):
-                              ganho médio quando acerta {fmtBRL(s.stats.avgWinProfit)} por vez, perda média
-                              quando erra {fmtBRL(s.stats.avgLossProfit)} por vez.{" "}
+                              <strong>{t("Running this contract 10x")}</strong> ({t("total cost")} {fmtBRL(s.cost * 10)}):{" "}
+                              {t("average win")} {fmtBRL(s.stats.avgWinProfit)} {t("per hit")}, {t("average loss")}{" "}
+                              {fmtBRL(s.stats.avgLossProfit)} {t("per miss")}.{" "}
                               {s.stats.breakEvenHits10 == null ? (
                                 <span style={{ color: COLORS.rust }}>
-                                  Nenhuma saída cobre o custo — não tem número de acertos que compense.
+                                  {t("No output covers the cost — no number of hits makes this worth it.")}
                                 </span>
                               ) : s.stats.breakEvenHits10 === 0 ? (
-                                <span style={{ color: COLORS.green }}>Nenhuma saída dá prejuízo — sem risco de perder no total das 10x.</span>
+                                <span style={{ color: COLORS.green }}>{t("No output results in a loss — no risk of losing across all 10x.")}</span>
                               ) : (
                                 <span style={{ color: COLORS.green }}>
-                                  Acertando pelo menos <strong>{s.stats.breakEvenHits10} de 10</strong> tentativas, você já sai no
-                                  positivo ou empatado (lucro esperado ×10: {fmtBRL(s.stats.evProfit * 10)}).
+                                  {t("Hitting at least")} <strong>{s.stats.breakEvenHits10} {t("of 10")}</strong> {t("attempts already gets you to break-even or profit")} ({t("expected profit")} ×10: {fmtBRL(s.stats.evProfit * 10)}).
                                 </span>
                               )}
                             </div>
@@ -338,8 +338,8 @@ export default function SuggestionHistory() {
                                   }}
                                 >
                                   <ItemThumb iconUrl={l.iconUrl} rarity={s.tier} size={22} />
-                                  {l.count}x {l.isSouvenir && "Lembrança "}
-                                  {l.skinName} ({l.wear}) — {fmtBRL(l.unitPriceBrl)} cada
+                                  {l.count}x {l.isSouvenir && `${t("Souvenir")} `}
+                                  {l.skinName} ({l.wear}) — {fmtBRL(l.unitPriceBrl)} {t("each")}
                                   <ExternalLink size={12} />
                                 </a>
                               ))}
@@ -361,7 +361,7 @@ export default function SuggestionHistory() {
                                   <ItemThumb iconUrl={o.iconUrl} rarity={s.nextTier} size={26} />
                                   {o.name}
                                   <span style={{ color: o.priceIsEstimate ? COLORS.gold : COLORS.textDim }}>
-                                    ({wearLabel(o)})
+                                    ({wearLabel(o, t)})
                                   </span>
                                   {o.marketHashName && (
                                     <a
@@ -369,14 +369,14 @@ export default function SuggestionHistory() {
                                       target="_blank"
                                       rel="noreferrer"
                                       style={{ color: COLORS.gold, display: "flex", alignItems: "center" }}
-                                      title="Abrir a saída no mercado — confira o preço e a liquidez real antes de decidir."
+                                      title={t("Open the output in the market — check the real price and liquidity before deciding.")}
                                     >
                                       <ExternalLink size={11} />
                                     </a>
                                   )}
                                 </span>
                                 <span style={{ color: COLORS.textDim, whiteSpace: "nowrap" }}>
-                                  {o.prob.toFixed(1)}% · mercado {fmtBRL(o.price)} → líquido {fmtBRL(o.netPrice)}
+                                  {o.prob.toFixed(1)}% · {t("market")} {fmtBRL(o.price)} → {t("net")} {fmtBRL(o.netPrice)}
                                 </span>
                               </div>
                             ))}

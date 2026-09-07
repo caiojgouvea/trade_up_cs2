@@ -3,6 +3,7 @@ import { RotateCcw, RefreshCw, Search, Star } from "lucide-react";
 import { COLORS } from "../lib/colors";
 import { fmtBRL, fmtFloat, computeStats } from "../lib/tradeUpMath";
 import { loadFavorites, saveFavorites } from "../lib/favorites";
+import { useI18n } from "../lib/i18n";
 import ItemThumb from "./ItemThumb";
 import {
   getCollections,
@@ -12,12 +13,14 @@ import {
   getExactPrice,
 } from "../lib/api";
 
-function wearLabel(o) {
-  if (!o.predictedWear) return "média entre wears";
-  return o.priceIsEstimate ? `${o.predictedWear}, estimado` : o.predictedWear;
+function wearLabel(o, t) {
+  if (!o.predictedWear) return t("average across wears");
+  return o.priceIsEstimate ? `${o.predictedWear}, ${t("estimated")}` : o.predictedWear;
 }
 
 export default function CollectionsExplorer() {
+  const { t, currency } = useI18n();
+  const priceField = currency === "brl" ? "priceBrlEstimate" : "priceUsd";
   const [collections, setCollections] = useState([]);
   const [collectionsLoading, setCollectionsLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -30,7 +33,7 @@ export default function CollectionsExplorer() {
   const [itemsLoading, setItemsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [itemFilter, setItemFilter] = useState("");
-  const [sort, setSort] = useState({ key: "priceBrlEstimate", dir: "desc" });
+  const [sort, setSort] = useState({ key: priceField, dir: "desc" });
   const [exactLoadingHash, setExactLoadingHash] = useState(null);
   const [error, setError] = useState("");
   const [favorites, setFavorites] = useState(() => loadFavorites());
@@ -47,6 +50,11 @@ export default function CollectionsExplorer() {
   useEffect(() => {
     loadCollections();
   }, []);
+
+  useEffect(() => {
+    if (selectedTag) loadItems(selectedTag);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currency]);
 
   async function loadCollections() {
     setCollectionsLoading(true);
@@ -84,7 +92,7 @@ export default function CollectionsExplorer() {
     setItemsLoading(true);
     setError("");
     try {
-      const data = await getCollectionItems(tag);
+      const data = await getCollectionItems(tag, currency);
       setItems(data.items);
       setRate(data.rate);
       setOutcomeMenu(data.outcomeMenu || {});
@@ -172,7 +180,7 @@ export default function CollectionsExplorer() {
 
   function tradeUpPreview(item) {
     const tierInfo = outcomeMenu[item.rarity];
-    if (!tierInfo || item.priceBrlEstimate == null) return null;
+    if (!tierInfo || item[priceField] == null) return null;
 
     // Prevê o wear real de cada saída assumindo que você compra ESSE wear
     // específico (não a média entre wears) — cai pra média só se faltar
@@ -183,7 +191,7 @@ export default function CollectionsExplorer() {
     const outcomes = exact?.outcomes ?? (item.stattrak ? tierInfo.stattrak : tierInfo.normal);
     if (!outcomes || outcomes.length === 0) return null;
 
-    const stats = computeStats({ cost: item.priceBrlEstimate * 10, outcomes });
+    const stats = computeStats({ cost: item[priceField] * 10, outcomes });
     const bestOutcome = item.stattrak ? tierInfo.bestOutcomeStattrak : tierInfo.bestOutcomeNormal;
     return {
       stats,
@@ -206,11 +214,11 @@ export default function CollectionsExplorer() {
       }}
     >
       <div style={{ maxWidth: "min(1800px, 96vw)", margin: "0 auto 24px" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Coleções &amp; Preços</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{t("Collections & Prices")}</h1>
         <p style={{ color: COLORS.textDim, fontSize: 13, marginTop: 6, maxWidth: 640 }}>
-          Preços vindos do Steam Community Market. A listagem em massa usa preço estimado
-          (USD convertido pra BRL pela cotação do dia); o preço exato em BRL de um item
-          específico pode ser conferido sob demanda.
+          {t(
+            "Prices come from the Steam Community Market. The bulk listing uses an estimated price (USD, converted to the selected currency at the day's rate); the exact BRL price of a specific item can be checked on demand."
+          )}
         </p>
       </div>
 
@@ -225,18 +233,18 @@ export default function CollectionsExplorer() {
             alignSelf: "start",
           }}
         >
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>Coleções</div>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>{t("Collections")}</div>
 
           {collections.length === 0 && !collectionsLoading ? (
             <button className="tuc-btn" style={{ width: "100%" }} onClick={handleSync} disabled={syncing}>
-              {syncing ? "Sincronizando..." : "Sincronizar lista do Steam"}
+              {syncing ? t("Syncing...") : t("Sync list from Steam")}
             </button>
           ) : (
             <>
               <div style={{ position: "relative", marginBottom: 10 }}>
                 <input
                   className="tuc-input"
-                  placeholder="Filtrar coleções..."
+                  placeholder={t("Filter collections...")}
                   value={collectionFilter}
                   onChange={(e) => setCollectionFilter(e.target.value)}
                 />
@@ -247,11 +255,11 @@ export default function CollectionsExplorer() {
                 onClick={handleSync}
                 disabled={syncing}
               >
-                <RotateCcw size={13} /> {syncing ? "Sincronizando..." : "Re-sincronizar lista"}
+                <RotateCcw size={13} /> {syncing ? t("Syncing...") : t("Re-sync list")}
               </button>
               <div style={{ maxHeight: 480, overflowY: "auto" }}>
                 {collectionsLoading ? (
-                  <div style={{ color: COLORS.textDim, fontSize: 12 }}>Carregando...</div>
+                  <div style={{ color: COLORS.textDim, fontSize: 12 }}>{t("Loading...")}</div>
                 ) : (
                   filteredCollections.map((c) => (
                     <div
@@ -271,7 +279,7 @@ export default function CollectionsExplorer() {
                       <div>{c.name}</div>
                       {c.synced_at && (
                         <div style={{ fontSize: 10, color: COLORS.textDim, marginTop: 2 }}>
-                          {c.total_count} itens · atualizado {new Date(c.synced_at).toLocaleString("pt-BR")}
+                          {c.total_count} {t("items")} · {t("updated")} {new Date(c.synced_at).toLocaleString()}
                         </div>
                       )}
                     </div>
@@ -312,7 +320,7 @@ export default function CollectionsExplorer() {
                 fontSize: 13,
               }}
             >
-              Escolhe uma coleção na lista ao lado.
+              {t("Pick a collection from the list on the side.")}
             </div>
           ) : (
             <>
@@ -328,9 +336,9 @@ export default function CollectionsExplorer() {
               >
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 15 }}>{selectedCollection?.name}</div>
-                  {rate && (
+                  {rate != null && currency === "brl" && (
                     <div style={{ fontSize: 11, color: COLORS.textDim }}>
-                      Cotação usada: 1 USD ≈ {fmtBRL(rate)}
+                      {t("Rate used")}: 1 USD ≈ {fmtBRL(rate)}
                     </div>
                   )}
                 </div>
@@ -341,12 +349,12 @@ export default function CollectionsExplorer() {
                   disabled={refreshing}
                 >
                   <RefreshCw size={13} className={refreshing ? "tuc-spin" : ""} />
-                  {refreshing ? "Buscando no Steam..." : "Buscar/atualizar preços"}
+                  {refreshing ? t("Fetching from Steam...") : t("Fetch/update prices")}
                 </button>
               </div>
 
               {itemsLoading ? (
-                <div style={{ color: COLORS.textDim, fontSize: 13 }}>Carregando...</div>
+                <div style={{ color: COLORS.textDim, fontSize: 13 }}>{t("Loading...")}</div>
               ) : items.length === 0 ? (
                 <div
                   style={{
@@ -359,9 +367,9 @@ export default function CollectionsExplorer() {
                     fontSize: 13,
                   }}
                 >
-                  Nenhum item em cache ainda pra essa coleção. Clica em "Buscar/atualizar preços"
-                  (isso pagina o Steam Market devagar de propósito pra não tomar rate limit —
-                  pode levar alguns segundos a até 1 minuto em coleções grandes).
+                  {t(
+                    'No cached items yet for this collection. Click "Fetch/update prices" (this paginates the Steam Market slowly on purpose to avoid rate limiting — can take a few seconds up to 1 minute for large collections).'
+                  )}
                 </div>
               ) : (
                 <div
@@ -382,7 +390,7 @@ export default function CollectionsExplorer() {
                       <input
                         className="tuc-input"
                         style={{ paddingLeft: 30 }}
-                        placeholder="Filtrar por arma ou skin..."
+                        placeholder={t("Filter by weapon or skin...")}
                         value={itemFilter}
                         onChange={(e) => setItemFilter(e.target.value)}
                       />
@@ -394,18 +402,18 @@ export default function CollectionsExplorer() {
                         <tr>
                           <th></th>
                           <th></th>
-                          <th style={{ cursor: "pointer" }} onClick={() => toggleSort("weapon")}>Arma</th>
-                          <th style={{ cursor: "pointer" }} onClick={() => toggleSort("skin")}>Skin</th>
-                          <th>Exterior</th>
+                          <th style={{ cursor: "pointer" }} onClick={() => toggleSort("weapon")}>{t("Weapon")}</th>
+                          <th style={{ cursor: "pointer" }} onClick={() => toggleSort("skin")}>{t("Skin")}</th>
+                          <th>{t("Exterior")}</th>
                           <th>ST</th>
-                          <th style={{ cursor: "pointer" }} onClick={() => toggleSort("priceBrlEstimate")}>
-                            Preço est. (BRL)
+                          <th style={{ cursor: "pointer" }} onClick={() => toggleSort(priceField)}>
+                            {t("Est. price")} ({currency === "brl" ? "BRL" : "USD"})
                           </th>
-                          <th>Preço exato</th>
+                          <th>{t("Exact price")} (BRL)</th>
                           <th style={{ cursor: "pointer" }} onClick={() => toggleSort("sell_listings")}>
-                            Anúncios ativos
+                            {t("Active listings")}
                           </th>
-                          <th>Trade-up (10x deste item)</th>
+                          <th>{t("Trade-up (10x of this item)")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -417,7 +425,7 @@ export default function CollectionsExplorer() {
                               <button
                                 className="tuc-icon-btn"
                                 onClick={() => toggleFavorite(it.market_hash_name)}
-                                aria-label="Favoritar"
+                                aria-label={t("Favorite")}
                                 style={{ color: favorites.has(it.market_hash_name) ? COLORS.gold : COLORS.textDim }}
                               >
                                 <Star size={15} fill={favorites.has(it.market_hash_name) ? COLORS.gold : "none"} />
@@ -432,10 +440,10 @@ export default function CollectionsExplorer() {
                             <td style={{ color: it.stattrak ? COLORS.gold : COLORS.textDim, fontSize: 11 }}>
                               {it.stattrak ? "ST" : "—"}
                             </td>
-                            <td>{it.priceBrlEstimate != null ? fmtBRL(it.priceBrlEstimate) : "—"}</td>
+                            <td>{it[priceField] != null ? fmtBRL(it[priceField]) : "—"}</td>
                             <td>
                               {it.price_brl_exact != null ? (
-                                <span style={{ color: COLORS.green }}>{fmtBRL(it.price_brl_exact)}</span>
+                                <span style={{ color: COLORS.green }}>R$ {it.price_brl_exact.toFixed(2)}</span>
                               ) : (
                                 <button
                                   className="tuc-btn-ghost"
@@ -443,7 +451,7 @@ export default function CollectionsExplorer() {
                                   onClick={() => handleExactPrice(it.market_hash_name)}
                                   disabled={exactLoadingHash === it.market_hash_name}
                                 >
-                                  {exactLoadingHash === it.market_hash_name ? "..." : "conferir"}
+                                  {exactLoadingHash === it.market_hash_name ? "..." : t("check")}
                                 </button>
                               )}
                             </td>
@@ -453,8 +461,8 @@ export default function CollectionsExplorer() {
                                 <span style={{ color: COLORS.textDim }}>—</span>
                               ) : (
                                 <div
-                                  title={`Vira (${preview.nextTier}): ${preview.outcomes
-                                    .map((o) => `${o.name} (${wearLabel(o)}) · ${fmtBRL(o.price)}`)
+                                  title={`${t("Becomes")} (${preview.nextTier}): ${preview.outcomes
+                                    .map((o) => `${o.name} (${wearLabel(o, t)}) · ${fmtBRL(o.price)}`)
                                     .join(" | ")}`}
                                 >
                                   <span style={{ color: preview.stats.verdictColor, fontWeight: 600 }}>
@@ -463,7 +471,7 @@ export default function CollectionsExplorer() {
                                   </span>
                                   <span style={{ color: COLORS.textDim }}>
                                     {" "}
-                                    · risco {preview.stats.probLoss.toFixed(0)}%
+                                    · {t("risk")} {preview.stats.probLoss.toFixed(0)}%
                                   </span>
                                   {preview.assumedAvgFloat != null && (
                                     <span style={{ color: COLORS.textDim, fontSize: 10 }}>
@@ -482,12 +490,12 @@ export default function CollectionsExplorer() {
                                     }}
                                   >
                                     →{" "}
-                                    {preview.outcomes.map((o) => `${o.name} (${wearLabel(o)})`).join(", ")}
+                                    {preview.outcomes.map((o) => `${o.name} (${wearLabel(o, t)})`).join(", ")}
                                   </div>
                                   {preview.bestOutcome && (
                                     <div style={{ color: COLORS.textDim, marginTop: 2, fontSize: 10 }}>
-                                      Melhor saída: {preview.bestOutcome.name} ({preview.bestOutcome.wear}) ·
-                                      float entre {fmtFloat(preview.bestOutcome.requiredAvgFloatMin)}–
+                                      {t("Best output")}: {preview.bestOutcome.name} ({preview.bestOutcome.wear}) ·
+                                      {t("float between")} {fmtFloat(preview.bestOutcome.requiredAvgFloatMin)}–
                                       {fmtFloat(preview.bestOutcome.requiredAvgFloatMax)}
                                     </div>
                                   )}

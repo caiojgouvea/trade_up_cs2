@@ -119,3 +119,6 @@ const cacheColumns = new Set(
 if (!cacheColumns.has("pricing_version")) {
   db.exec("ALTER TABLE suggestion_cache ADD COLUMN pricing_version TEXT NOT NULL DEFAULT 'legacy'");
 }
+if (!cacheColumns.has("currency")) {
+  db.exec("ALTER TABLE suggestion_cache ADD COLUMN currency TEXT NOT NULL DEFAULT 'brl'");
+}

@@ -53,6 +53,7 @@ collectionsRouter.post("/:tag/refresh", async (req, res) => {
 });
 
 collectionsRouter.get("/:tag/items", async (req, res) => {
+  const currency = req.query.currency === "brl" ? "brl" : "usd";
   try {
     const rate = await getUsdToBrlRate(db);
     const rows = db
@@ -70,9 +71,9 @@ collectionsRouter.get("/:tag/items", async (req, res) => {
       priceBrlEstimate: r.price_usd_cents != null ? (r.price_usd_cents / 100) * rate : null,
     }));
 
-    const { byTier } = await getCollectionOutcomeMenu(req.params.tag);
+    const { byTier } = await getCollectionOutcomeMenu(req.params.tag, currency);
 
-    res.json({ rate, items, outcomeMenu: byTier });
+    res.json({ rate, currency, items, outcomeMenu: byTier });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }

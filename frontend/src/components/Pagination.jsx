@@ -1,7 +1,9 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { COLORS } from "../lib/colors";
+import { useI18n } from "../lib/i18n";
 
 export default function Pagination({ page, pageCount, total, pageSize, onPageChange, onPageSizeChange }) {
+  const { t } = useI18n();
   if (total === 0) return null;
 
   const from = (page - 1) * pageSize + 1;
@@ -23,7 +25,7 @@ export default function Pagination({ page, pageCount, total, pageSize, onPageCha
       }}
     >
       <span>
-        {from}–{to} de {total}
+        {from}–{to} {t("of")} {total}
       </span>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <select
@@ -34,7 +36,7 @@ export default function Pagination({ page, pageCount, total, pageSize, onPageCha
         >
           {[25, 50, 100, 200].map((size) => (
             <option key={size} value={size}>
-              {size}/pág.
+              {size}/{t("page")}
             </option>
           ))}
         </select>
@@ -42,7 +44,7 @@ export default function Pagination({ page, pageCount, total, pageSize, onPageCha
           className="tuc-icon-btn"
           onClick={() => onPageChange(page - 1)}
           disabled={page <= 1}
-          aria-label="Página anterior"
+          aria-label={t("Previous page")}
           style={{ opacity: page <= 1 ? 0.4 : 1 }}
         >
           <ChevronLeft size={16} />
@@ -54,7 +56,7 @@ export default function Pagination({ page, pageCount, total, pageSize, onPageCha
           className="tuc-icon-btn"
           onClick={() => onPageChange(page + 1)}
           disabled={page >= pageCount}
-          aria-label="Próxima página"
+          aria-label={t("Next page")}
           style={{ opacity: page >= pageCount ? 0.4 : 1 }}
         >
           <ChevronRight size={16} />

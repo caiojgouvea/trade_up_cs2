@@ -3,6 +3,7 @@ import { Info } from "lucide-react";
 import { COLORS } from "../lib/colors";
 import { fmtBRL, fmtFloat } from "../lib/tradeUpMath";
 import { outputFloatFromAvg, findBand, requiredAvgForBand, normalizeFloat, denormalizeFloat } from "../lib/floatMath";
+import { useI18n } from "../lib/i18n";
 
 const SLOTS = 10;
 
@@ -20,6 +21,7 @@ function bestBandIndex(outcome) {
 // skins diferentes). Se só vier `inputFloatRange` (uso antigo, uma skin só
 // repetida 10x), monta uma única perna de 10 com aquela faixa.
 export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, inputFloatRange }) {
+  const { t } = useI18n();
   const resolvedLegs = useMemo(() => {
     if (legs?.length) return legs;
     return [{ count: SLOTS, floatRange: inputFloatRange, label: null }];
@@ -58,7 +60,7 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
   if (!candidateOutcomes.length) {
     return (
       <div style={{ fontSize: 11, color: COLORS.textDim }}>
-        Nenhuma das saídas possíveis tem dado de float carregado ainda.
+        {t("None of the possible outputs have float data loaded yet.")}
       </div>
     );
   }
@@ -134,11 +136,11 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
             color: hitTarget ? COLORS.green : COLORS.rust,
           }}
         >
-          Float médio relativo de entrada: <strong>{fmtFloat(avgAdjusted)}</strong> → float de saída
-          previsto: <strong>{fmtFloat(outFloat)}</strong> ({resultBand?.name ?? "fora de qualquer faixa conhecida"})
+          {t("Average relative input float")}: <strong>{fmtFloat(avgAdjusted)}</strong> → {t("predicted output float")}
+          : <strong>{fmtFloat(outFloat)}</strong> ({resultBand?.name ?? t("outside any known range")})
           {resultBand?.price != null && <> · {fmtBRL(resultBand.price)}</>}
           {" — "}
-          {hitTarget ? "bate com o alvo escolhido." : `não bate com o alvo (${band.name}).`}
+          {hitTarget ? t("matches the chosen target.") : t(`doesn't match the target (${band.name}).`)}
         </div>
       );
     } else {
@@ -188,17 +190,13 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
         const reachable = target.wearPrices.filter((b) => b.max >= lo && b.min <= hi);
         resultBlock = (
           <div style={{ marginTop: 8, fontSize: 11, color: COLORS.rust }}>
-            Com os wears já travados nas pernas (não importa o float exato de cada item dentro
-            deles), essa mistura só alcança float de saída entre <strong>{fmtFloat(lo)}</strong> e{" "}
-            <strong>{fmtFloat(hi)}</strong> — <strong>{band.name}</strong> está fora disso, então
-            trocar o alvo no seletor não muda o que você precisa digitar, porque nenhuma
-            combinação fecha.
+            {t("With the wears already locked in on the legs (the exact float of each item within them doesn't matter), this mix can only reach an output float between")} <strong>{fmtFloat(lo)}</strong> {t("and")}{" "}
+            <strong>{fmtFloat(hi)}</strong> — <strong>{band.name}</strong> {t("is outside that, so changing the target in the selector won't change what you need to type, because no combination closes.")}
             {reachable.length > 0 && (
               <>
                 {" "}
-                Saída(s) que essa mistura consegue alcançar: <strong>{reachable.map((b) => b.name).join(", ")}</strong>
-                . Escolhe um desses no "Wear alvo" pra ver os números reais, ou troca o wear de
-                alguma perna pra abrir outras faixas.
+                {t("Output(s) this mix can reach")}: <strong>{reachable.map((b) => b.name).join(", ")}</strong>
+                . {t('Pick one of these in "Target wear" to see the real numbers, or change a leg\'s wear to open other ranges.')}
               </>
             )}
           </div>
@@ -213,17 +211,16 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
           <div style={{ marginTop: 8, fontSize: 11, color: COLORS.text }}>
             {filledCount > 0 && (
               <div style={{ color: COLORS.textDim, marginBottom: 4 }}>
-                Float bruto médio dos {filledCount} preenchido(s): <strong>{fmtFloat(avgRawFilled)}</strong>{" "}
-                (média relativa considerando a faixa de cada perna: {fmtFloat(sumAdjustedFilled / (filledCount || 1))})
+                {t("Average raw float of the")} {filledCount} {t("filled in")}: <strong>{fmtFloat(avgRawFilled)}</strong>{" "}
+                ({t("relative average accounting for each leg's range")}: {fmtFloat(sumAdjustedFilled / (filledCount || 1))})
               </div>
             )}
             {anyMissingRange && (
               <div style={{ color: COLORS.gold, marginBottom: 4 }}>
-                Uma ou mais pernas não têm dado de float — assumindo faixa 0–1 pra elas (pode estar
-                errado se essa skin não cobrir a faixa toda).
+                {t("One or more legs have no float data — assuming a 0–1 range for them (may be wrong if this skin doesn't cover the whole range).")}
               </div>
             )}
-            Faltam <strong>{remaining}</strong>. Pra fechar em <strong>{band.name}</strong>:
+            {t("Missing")} <strong>{remaining}</strong>. {t("To close on")} <strong>{band.name}</strong>:
             <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
               {emptyLegEntries.map(([legIdx, count]) => {
                 const r = legRange(legIdx);
@@ -238,18 +235,16 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
                 const leg = resolvedLegs[legIdx];
                 return (
                   <li key={legIdx}>
-                    {leg.label ? <strong>{leg.label}</strong> : "entrada"} — {count} restante
-                    {count > 1 ? "s" : ""}: float até <strong>{fmtFloat(rawMax)}</strong>
-                    {intersectMin > wearAdj.min && <> (mínimo {fmtFloat(rawMin)})</>} cada
+                    {leg.label ? <strong>{leg.label}</strong> : t("input")} — {count} {t("remaining")}
+                    : {t("float up to")} <strong>{fmtFloat(rawMax)}</strong>
+                    {intersectMin > wearAdj.min && <> ({t("minimum")} {fmtFloat(rawMin)})</>} {t("each")}
                   </li>
                 );
               })}
             </ul>
             {emptyLegEntries.length > 1 && (
               <div style={{ marginTop: 4, color: COLORS.textDim }}>
-                Os limites acima assumem que a média entre as pernas restantes fica equilibrada —
-                dá pra compensar um item mais gasto numa perna com outro mais novo na mesma ou
-                outra perna, contanto que a média relativa geral não passe do alvo.
+                {t("The limits above assume the average across the remaining legs stays balanced — you can offset a more worn item on one leg with a newer one on the same or another leg, as long as the overall relative average doesn't exceed the target.")}
               </div>
             )}
           </div>
@@ -268,10 +263,10 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
         background: COLORS.bg,
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>Calculadora de float</div>
+      <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>{t("Float calculator")}</div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
-        <label style={{ fontSize: 10, color: COLORS.textDim }}>Saída:</label>
+        <label style={{ fontSize: 10, color: COLORS.textDim }}>{t("Output")}:</label>
         <select
           className="tuc-input"
           style={{ width: "auto", fontSize: 11 }}
@@ -285,7 +280,7 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
           ))}
         </select>
 
-        <label style={{ fontSize: 10, color: COLORS.textDim, marginLeft: 8 }}>Wear alvo:</label>
+        <label style={{ fontSize: 10, color: COLORS.textDim, marginLeft: 8 }}>{t("Target wear")}:</label>
         <select
           className="tuc-input"
           style={{ width: "auto", fontSize: 11 }}
@@ -302,7 +297,7 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
         <button
           onClick={() => setShowInfo((v) => !v)}
           className="tuc-icon-btn"
-          title="Sobre as faixas de float"
+          title={t("About float ranges")}
           style={{ color: showInfo ? COLORS.gold : COLORS.textDim }}
         >
           <Info size={15} />
@@ -322,18 +317,19 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
           }}
         >
           <div style={{ marginBottom: 6 }}>
-            O float vai de 0 a 1 e define o desgaste visual da arma: quanto mais baixo, mais nova
-            (Factory New); quanto mais alto, mais gasta (Battle-Scarred). Cada skin tem seu próprio
-            min/max — por isso as faixas abaixo são específicas de <strong>{target?.name}</strong>,
-            não as faixas padrão do jogo. O que entra na média não é o float bruto, é a posição
-            relativa dele dentro da faixa própria de cada skin de entrada.
+            {t(
+              "Float ranges from 0 to 1 and defines the weapon's visual wear: the lower, the newer (Factory New); the higher, the more worn (Battle-Scarred). Each skin has its own min/max — that's why the ranges below are specific to"
+            )} <strong>{target?.name}</strong>,{" "}
+            {t(
+              "not the game's default ranges. What goes into the average isn't the raw float, it's its relative position within each input skin's own range."
+            )}
           </div>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={{ textAlign: "left", fontWeight: 500, paddingBottom: 3 }}>Wear</th>
-                <th style={{ textAlign: "left", fontWeight: 500, paddingBottom: 3 }}>Faixa de float</th>
-                <th style={{ textAlign: "left", fontWeight: 500, paddingBottom: 3 }}>Preço</th>
+                <th style={{ textAlign: "left", fontWeight: 500, paddingBottom: 3 }}>{t("Wear")}</th>
+                <th style={{ textAlign: "left", fontWeight: 500, paddingBottom: 3 }}>{t("Float range")}</th>
+                <th style={{ textAlign: "left", fontWeight: 500, paddingBottom: 3 }}>{t("Price")}</th>
               </tr>
             </thead>
             <tbody>
@@ -343,7 +339,7 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
                   <td>
                     {fmtFloat(b.min)}–{fmtFloat(b.max)}
                   </td>
-                  <td>{b.price != null ? fmtBRL(b.price) : "sem preço"}</td>
+                  <td>{b.price != null ? fmtBRL(b.price) : t("no price")}</td>
                 </tr>
               ))}
             </tbody>
@@ -359,16 +355,16 @@ export default function FloatCalculator({ outcomes, defaultOutcomeName, legs, in
             <div style={{ fontSize: 10, color: COLORS.textDim, marginBottom: 4 }}>
               {leg.label ? (
                 <>
-                  <strong style={{ color: COLORS.text }}>{leg.label}</strong> — floats brutos (do
-                  inspect link) {r.has && <>— faixa dessa skin: {fmtFloat(r.min)}–{fmtFloat(r.max)}</>}
+                  <strong style={{ color: COLORS.text }}>{leg.label}</strong> — {t("raw floats (from the inspect link)")}{" "}
+                  {r.has && <>— {t("this skin's range")}: {fmtFloat(r.min)}–{fmtFloat(r.max)}</>}
                 </>
               ) : (
                 <>
-                  Floats brutos (do inspect link) dos itens de entrada
-                  {r.has && <> — faixa dessa skin: {fmtFloat(r.min)}–{fmtFloat(r.max)}</>}
+                  {t("Raw floats (from the inspect link) of the input items")}
+                  {r.has && <> — {t("this skin's range")}: {fmtFloat(r.min)}–{fmtFloat(r.max)}</>}
                 </>
               )}{" "}
-              (deixe em branco o que não souber):
+              ({t("leave blank what you don't know")}):
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
               {Array.from({ length: leg.count }).map((_, i) => (

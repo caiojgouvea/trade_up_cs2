@@ -4,6 +4,7 @@ import { COLORS } from "../lib/colors";
 import { fmtBRL, fmtFloat } from "../lib/tradeUpMath";
 import { rarityColor } from "../lib/rarity";
 import { loadFavoriteManipulated, saveFavoriteManipulated, manipulatedKey } from "../lib/favorites";
+import { useI18n } from "../lib/i18n";
 import {
   getManipulatedRefreshStatus,
   getManipulatedSuggestions,
@@ -17,25 +18,26 @@ function steamMarketUrl(marketHashName) {
   return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketHashName)}`;
 }
 
-function wearLabel(o) {
-  if (!o.predictedWear) return "média entre wears";
+function wearLabel(o, t) {
+  if (!o.predictedWear) return t("average across wears");
   const withFloat = o.predictedFloatValue != null ? ` · float ${fmtFloat(o.predictedFloatValue)}` : "";
-  return (o.priceIsEstimate ? `${o.predictedWear}, preço estimado` : o.predictedWear) + withFloat;
+  return (o.priceIsEstimate ? `${o.predictedWear}, ${t("estimated price")}` : o.predictedWear) + withFloat;
 }
 
-function breakEvenLabel(stats) {
-  if (stats.breakEvenHits10 == null) return "nunca";
-  if (stats.breakEvenHits10 === 0) return "sem risco";
+function breakEvenLabel(stats, t) {
+  if (stats.breakEvenHits10 == null) return t("never");
+  if (stats.breakEvenHits10 === 0) return t("risk-free");
   return `≥${stats.breakEvenHits10}/10`;
 }
 
 const VERDICT_COLOR = {
-  "Bom contrato": COLORS.green,
-  Arriscado: COLORS.gold,
-  Furada: COLORS.rust,
+  "Good deal": COLORS.green,
+  Risky: COLORS.gold,
+  Trap: COLORS.rust,
 };
 
 export default function ManipulatedSuggestions() {
+  const { t, currency } = useI18n();
   const [suggestions, setSuggestions] = useState([]);
   const [rate, setRate] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -71,7 +73,7 @@ export default function ManipulatedSuggestions() {
     load();
     getManipulatedRefreshStatus().then(setJobStatus).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [currency]);
 
   useEffect(() => {
     if (!jobStatus?.running) return undefined;
@@ -82,7 +84,7 @@ export default function ManipulatedSuggestions() {
         setJobStatus(next);
         if (!next.running) {
           if (next.error) {
-            setError(`O recálculo falhou: ${next.error}`);
+            setError(`Recalculation failed: ${next.error}`);
           } else {
             setMinListings(next.minListings);
             load(next.minListings);
@@ -103,7 +105,7 @@ export default function ManipulatedSuggestions() {
     setLoading(true);
     setError("");
     try {
-      const data = await getManipulatedSuggestions(targetMinListings);
+      const data = await getManipulatedSuggestions(targetMinListings, currency);
       setSuggestions(data.suggestions);
       setRate(data.rate);
       setCacheInfo({
@@ -121,7 +123,7 @@ export default function ManipulatedSuggestions() {
   async function handleRefresh(exhaustive) {
     setError("");
     try {
-      const status = await refreshManipulatedSuggestions(minListings, exhaustive);
+      const status = await refreshManipulatedSuggestions(minListings, exhaustive, currency);
       setJobStatus(status);
     } catch (e) {
       setError(e.message);
@@ -227,18 +229,16 @@ export default function ManipulatedSuggestions() {
       <div style={{ maxWidth: "min(1800px, 96vw)", margin: "0 auto 20px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Shuffle size={18} color={COLORS.gold} />
-          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Trade-ups manipulados</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{t("Manipulated Trade-Ups")}</h1>
         </div>
         <p style={{ color: COLORS.textDim, fontSize: 13, marginTop: 6, maxWidth: 720 }}>
-          Em vez de comprar 10 cópias do input mais barato, mistura duas unidades diferentes
-          (wears e/ou skins diferentes, mesma raridade e coleção) pra pilotar o float médio de
-          entrada pra uma faixa mais barata de atingir. O float de saída é determinístico, então
-          isso muda de propósito qual wear cada saída possível vai ter. Só aparece aqui quando a
-          mistura bate a estratégia uniforme — a maioria das coleções não ganha nada misturando.
-          <strong style={{ color: COLORS.text }}> Atenção: </strong>
-          o float usado é o pior limite da faixa de cada wear (Steam não expõe o float exato de cada
-          anúncio antes de comprar), então o resultado é uma estimativa, não garantia — o wear
-          real de cada anúncio específico pode variar dentro da faixa.
+          {t(
+            "Instead of buying 10 copies of the cheapest input, mixes two different units (different wears and/or skins, same rarity and collection) to steer the average input float into a cheaper-to-reach range. The output float is deterministic, so this changes on purpose which wear each possible output will have. Only shows up here when the mix beats the uniform strategy — most collections gain nothing from mixing."
+          )}
+          <strong style={{ color: COLORS.text }}> {t("Warning:")} </strong>
+          {t(
+            "the float used is the worst edge of each wear's range (Steam doesn't expose the exact float of a listing before buying), so the result is an estimate, not a guarantee — the real wear of a specific listing can vary within the range."
+          )}
         </p>
       </div>
 
@@ -258,15 +258,14 @@ export default function ManipulatedSuggestions() {
         >
           <AlertTriangle size={16} color={COLORS.gold} style={{ flexShrink: 0, marginTop: 1 }} />
           <div>
-            <strong style={{ color: COLORS.gold }}>Cuidado ao comprar:</strong> a mistura só funciona
-            se você comprar exatamente o wear (e StatTrak™, quando marcado) indicado de cada
-            perna — errar isso destrói o float calculado. O link "abrir no mercado" leva pra
-            página certa da arma+skin, mas a Steam mudou o site: <strong>StatTrak™ e cada wear
-            agora são filtros dentro da mesma página</strong>, não páginas separadas — o link NÃO
-            seleciona isso sozinho. Depois de abrir, marque manualmente o filtro StatTrak™ (se a
-            perna pedir) e o wear exato antes de comprar. Isso pegou um usuário de surpresa: ele
-            clicou no link de uma perna StatTrak e acabou comprando a versão Normal por engano,
-            porque a página abre com Normal marcado por padrão.
+            <strong style={{ color: COLORS.gold }}>{t("Careful when buying:")}</strong>{" "}
+            {t(
+              'the mix only works if you buy exactly the wear (and StatTrak™, when marked) shown for each leg — getting it wrong destroys the calculated float. The "open in market" link takes you to the right weapon+skin page, but Steam changed the site:'
+            )}{" "}
+            <strong>{t("StatTrak™ and each wear are now filters within the same page")}</strong>,{" "}
+            {t(
+              'not separate pages — the link does NOT select this by itself. After opening, manually check the StatTrak™ filter (if the leg calls for it) and the exact wear before buying. This caught a user off guard once: they clicked a StatTrak leg\'s link and ended up buying the Normal version by mistake, because the page opens with Normal selected by default.'
+            )}
           </div>
         </div>
         {error && (
@@ -296,7 +295,10 @@ export default function ManipulatedSuggestions() {
             marginBottom: 14,
           }}
         >
-          <strong style={{ color: COLORS.green }}>Modo conservador:</strong> o retorno é líquido após a taxa estimada do Mercado Steam e só usa o preço direto do wear previsto para todas as saídas.
+          <strong style={{ color: COLORS.green }}>{t("Conservative mode:")}</strong>{" "}
+          {t(
+            "returns are net of the estimated Steam Market fee and only use the direct price of the predicted wear for every output."
+          )}
         </div>
 
         <div
@@ -313,7 +315,7 @@ export default function ManipulatedSuggestions() {
           }}
         >
           <label style={{ fontSize: 11, color: COLORS.textDim, display: "flex", alignItems: "center", gap: 6 }}>
-            Liquidez mín. (anúncios ativos)
+            {t("Min. liquidity (active listings)")}
             <input
               className="tuc-input"
               style={{ width: 70 }}
@@ -329,19 +331,19 @@ export default function ManipulatedSuggestions() {
             style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}
             onClick={() => handleRefresh(false)}
             disabled={jobStatus?.running}
-            title="Recalcula com o pool otimizado. O resultado anterior continua disponível até terminar."
+            title={t("Recalculates with the optimized pool. The previous result stays available until it finishes.")}
           >
             <RefreshCw size={13} className={jobStatus?.running ? "tuc-spin" : ""} />
-            {jobStatus?.running ? "Recalculando..." : "Recalcular"}
+            {jobStatus?.running ? t("Recalculating...") : t("Recalculate")}
           </button>
           <button
             className="tuc-btn-ghost"
             style={{ whiteSpace: "nowrap" }}
             onClick={() => handleRefresh(true)}
             disabled={jobStatus?.running}
-            title="Testa todos os itens coringa. Pode levar horas e continua rodando no servidor."
+            title={t("Tests every wildcard item. Can take hours and keeps running on the server.")}
           >
-            Busca exaustiva
+            {t("Exhaustive search")}
           </button>
           <select
             className="tuc-input"
@@ -349,9 +351,9 @@ export default function ManipulatedSuggestions() {
             value={stattrakFilter}
             onChange={(e) => setStattrakFilter(e.target.value)}
           >
-            <option value="all">Normal + StatTrak</option>
-            <option value="normal">Só Normal</option>
-            <option value="stattrak">Só StatTrak</option>
+            <option value="all">{t("Normal + StatTrak")}</option>
+            <option value="normal">{t("Normal only")}</option>
+            <option value="stattrak">{t("StatTrak only")}</option>
           </select>
           <select
             className="tuc-input"
@@ -359,10 +361,10 @@ export default function ManipulatedSuggestions() {
             value={rarityFilter}
             onChange={(e) => setRarityFilter(e.target.value)}
           >
-            <option value="all">Qualquer raridade de saída</option>
+            <option value="all">{t("Any output rarity")}</option>
             {rarityOptions.map((r) => (
               <option key={r} value={r}>
-                Saída: {r}
+                {t("Output")}: {r}
               </option>
             ))}
           </select>
@@ -372,23 +374,23 @@ export default function ManipulatedSuggestions() {
             value={riskFilter}
             onChange={(e) => setRiskFilter(e.target.value)}
           >
-            <option value="all">Qualquer risco</option>
-            <option value="high">Risco alto (45%+)</option>
-            <option value="fifty">50/50 exato</option>
+            <option value="all">{t("Any risk")}</option>
+            <option value="high">{t("High risk (45%+)")}</option>
+            <option value="fifty">{t("Exact 50/50")}</option>
           </select>
           <input
             className="tuc-input"
             style={{ flex: 1, minWidth: 180 }}
-            placeholder="Filtrar por coleção ou skin..."
+            placeholder={t("Filter by collection or skin...")}
             value={textFilter}
             onChange={(e) => setTextFilter(e.target.value)}
           />
           <label style={{ fontSize: 11, color: COLORS.textDim, display: "flex", alignItems: "center", gap: 6 }}>
-            Custo
+            {t("Cost")}
             <input
               className="tuc-input"
               style={{ width: 80 }}
-              placeholder="mín."
+              placeholder={t("min.")}
               value={minCost}
               onChange={(e) => setMinCost(e.target.value)}
             />
@@ -396,17 +398,17 @@ export default function ManipulatedSuggestions() {
             <input
               className="tuc-input"
               style={{ width: 80 }}
-              placeholder="máx."
+              placeholder={t("max.")}
               value={maxCost}
               onChange={(e) => setMaxCost(e.target.value)}
             />
           </label>
           <label style={{ fontSize: 11, color: COLORS.textDim, display: "flex", alignItems: "center", gap: 6 }}>
-            Risco %
+            {t("Risk %")}
             <input
               className="tuc-input"
               style={{ width: 60 }}
-              placeholder="mín."
+              placeholder={t("min.")}
               value={minRisk}
               onChange={(e) => setMinRisk(e.target.value)}
             />
@@ -414,12 +416,12 @@ export default function ManipulatedSuggestions() {
             <input
               className="tuc-input"
               style={{ width: 60 }}
-              placeholder="máx."
+              placeholder={t("max.")}
               value={maxRisk}
               onChange={(e) => setMaxRisk(e.target.value)}
             />
           </label>
-          {rate && (
+          {rate != null && currency === "brl" && (
             <span style={{ fontSize: 11, color: COLORS.textDim, marginLeft: "auto" }}>
               1 USD ≈ {fmtBRL(rate)}
             </span>
@@ -437,13 +439,13 @@ export default function ManipulatedSuggestions() {
             }}
           >
             {jobStatus?.running
-              ? `Calculando ${jobStatus.exhaustive ? "em modo exaustivo" : "em modo otimizado"} com liquidez mínima ${jobStatus.minListings}... A página continua utilizável.`
-              : `Resultado em cache: ${new Date(cacheInfo.computedAt).toLocaleString("pt-BR")} · liquidez mínima ${cacheInfo.minListings}${cacheInfo.exhaustive ? " · busca exaustiva" : ""}.`}
+              ? `${t("Calculating")} ${jobStatus.exhaustive ? t("in exhaustive mode") : t("in optimized mode")} ${t("with minimum liquidity")} ${jobStatus.minListings}... ${t("The page stays usable.")}`
+              : `${t("Cached result:")} ${new Date(cacheInfo.computedAt).toLocaleString()} · ${t("minimum liquidity")} ${cacheInfo.minListings}${cacheInfo.exhaustive ? ` · ${t("exhaustive search")}` : ""}.`}
           </div>
         )}
 
         {loading ? (
-          <div style={{ color: COLORS.textDim, fontSize: 13 }}>Calculando...</div>
+          <div style={{ color: COLORS.textDim, fontSize: 13 }}>{t("Calculating...")}</div>
         ) : filtered.length === 0 ? (
           <div
             style={{
@@ -456,8 +458,9 @@ export default function ManipulatedSuggestions() {
               fontSize: 13,
             }}
           >
-            Nenhuma mistura vale a pena com os dados sincronizados agora — a maioria das
-            coleções não ganha nada manipulando o float, o input mais barato uniforme já é ótimo.
+            {t(
+              "No mix is worth it with the data synced right now — most collections gain nothing from manipulating the float, the uniform cheapest input is already optimal."
+            )}
           </div>
         ) : (
           <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.border}`, borderRadius: 8, overflow: "hidden" }}>
@@ -466,25 +469,25 @@ export default function ManipulatedSuggestions() {
                 <thead>
                   <tr>
                     <th></th>
-                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("collectionName")}>Coleção</th>
-                    <th>Raridade</th>
+                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("collectionName")}>{t("Collection")}</th>
+                    <th>{t("Rarity")}</th>
                     <th>ST</th>
-                    <th>Mistura de entrada</th>
-                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("cost")}>Custo (10x)</th>
-                    <th>Custo uniforme</th>
-                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.bestCaseRoi")} title="Lucro líquido se sair a saída mais cara possível">Melhor caso</th>
-                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.roi")} title="Média ponderada pelas chances de cada saída">Esperado</th>
-                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.worstCaseRoi")} title="Lucro líquido se sair a saída mais barata possível">Pior caso</th>
-                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.probLoss")}>Risco</th>
+                    <th>{t("Input mix")}</th>
+                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("cost")}>{t("Cost (10x)")}</th>
+                    <th>{t("Uniform cost")}</th>
+                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.bestCaseRoi")} title={t("Net profit if the most expensive possible output comes out")}>{t("Best case")}</th>
+                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.roi")} title={t("Average weighted by the odds of each output")}>{t("Expected")}</th>
+                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.worstCaseRoi")} title={t("Net profit if the cheapest possible output comes out")}>{t("Worst case")}</th>
+                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.probLoss")}>{t("Risk")}</th>
                     <th
                       style={{ cursor: "pointer" }}
                       onClick={() => toggleSort("stats.breakEvenHits10")}
-                      title="Rodando esse contrato 10x, quantos acertos (saída que cobre o custo) você precisa pra não sair no prejuízo"
+                      title={t("Running this contract 10x, how many hits (an output that covers the cost) you need to not end up at a loss")}
                     >
-                      Empate em 10x
+                      {t("Break-even in 10x")}
                     </th>
-                    <th>Veredito</th>
-                    <th>Saídas possíveis</th>
+                    <th>{t("Verdict")}</th>
+                    <th>{t("Possible outputs")}</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -504,7 +507,7 @@ export default function ManipulatedSuggestions() {
                                 e.stopPropagation();
                                 toggleFavorite(key);
                               }}
-                              aria-label="Favoritar"
+                              aria-label={t("Favorite")}
                               style={{ color: favorites.has(key) ? COLORS.gold : COLORS.textDim }}
                             >
                               <Star size={15} fill={favorites.has(key) ? COLORS.gold : "none"} />
@@ -516,7 +519,7 @@ export default function ManipulatedSuggestions() {
                               {s.collectionName}
                               {s.crossCollection && (
                                 <span
-                                  title="Usa coringa de outra coleção pra ajustar o float — parte da chance de saída vem dessa outra coleção"
+                                  title={t("Uses a wildcard from another collection to adjust the float — part of the output odds come from that other collection")}
                                   style={{
                                     fontSize: 9,
                                     fontWeight: 600,
@@ -527,7 +530,7 @@ export default function ManipulatedSuggestions() {
                                     textTransform: "uppercase",
                                   }}
                                 >
-                                  Cross-coleção
+                                  {t("Cross-collection")}
                                 </span>
                               )}
                             </div>
@@ -546,23 +549,24 @@ export default function ManipulatedSuggestions() {
                                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                   <ItemThumb iconUrl={l.iconUrl} rarity={s.tier} size={22} />
                                   <span>
-                                    {l.count}x {l.isSouvenir && <span style={{ color: COLORS.gold }}>Lembrança </span>}
+                                    {l.count}x {l.isSouvenir && <span style={{ color: COLORS.gold }}>{t("Souvenir")} </span>}
                                     {l.skinName}{" "}
                                     <span
                                       style={{ color: COLORS.textDim }}
                                       title={
                                         l.floatRange
-                                          ? `Faixa de float própria dessa skin: ${fmtFloat(l.floatRange.min)}–${fmtFloat(
-                                              l.floatRange.max
-                                            )}. O desgaste RELATIVO dela (o que entra na conta) depende dessa
-                                            faixa, não é igual entre skins diferentes.`
+                                          ? t(
+                                              `This skin's own float range: ${fmtFloat(l.floatRange.min)}–${fmtFloat(
+                                                l.floatRange.max
+                                              )}. Its RELATIVE wear (what enters the calculation) depends on this range, it isn't the same across different skins.`
+                                            )
                                           : undefined
                                       }
                                     >
                                       ({l.wear})
                                     </span>
                                     {l.collectionTag !== s.collectionTag && (
-                                      <span style={{ color: COLORS.rust }}> — coringa ({l.collectionName})</span>
+                                      <span style={{ color: COLORS.rust }}> — {t("wildcard")} ({l.collectionName})</span>
                                     )}
                                   </span>
                                   <a
@@ -571,7 +575,7 @@ export default function ManipulatedSuggestions() {
                                     rel="noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     style={{ color: COLORS.gold, display: "flex", alignItems: "center" }}
-                                    title="Abrir no mercado — marque o filtro StatTrak™ e wear certo na página, o link não seleciona sozinho"
+                                    title={t("Open in market — set the StatTrak™ filter and right wear on the page, the link doesn't select it by itself")}
                                   >
                                     <ExternalLink size={12} />
                                   </a>
@@ -604,9 +608,9 @@ export default function ManipulatedSuggestions() {
                           <td>{s.stats.probLoss.toFixed(0)}%</td>
                           <td
                             style={{ color: s.stats.breakEvenHits10 == null ? COLORS.rust : COLORS.textDim, fontSize: 11 }}
-                            title="Acertos = saídas cujo valor líquido cobre o custo. Assume ganho médio e perda média constantes a cada tentativa (aproximação)."
+                            title={t("Hits = outputs whose net value covers the cost. Assumes constant average win and average loss per attempt (approximation).")}
                           >
-                            {breakEvenLabel(s.stats)}
+                            {breakEvenLabel(s.stats, t)}
                           </td>
                           <td>
                             <span
@@ -621,14 +625,14 @@ export default function ManipulatedSuggestions() {
                                 textAlign: "center",
                               }}
                             >
-                              {s.stats.verdict}
+                              {t(s.stats.verdict)}
                             </span>
                           </td>
                           <td style={{ maxWidth: 220 }}>
                             <div
                               style={{ display: "flex", flexDirection: "column", gap: 3 }}
                               title={s.outcomes
-                                .map((o) => `${o.name} (${wearLabel(o)}) · ${fmtBRL(o.price)} · ${o.minListings} anúncios`)
+                                .map((o) => `${o.name} (${wearLabel(o, t)}) · ${fmtBRL(o.price)} · ${o.minListings} ${t("listings")}`)
                                 .join(" | ")}
                             >
                               {s.outcomes.slice(0, 3).map((o, i) => (
@@ -652,14 +656,14 @@ export default function ManipulatedSuggestions() {
                                       </span>
                                     )}
                                     {o.fromCollectionTag !== s.collectionTag && (
-                                      <span style={{ color: COLORS.rust }}> · outra coleção</span>
+                                      <span style={{ color: COLORS.rust }}> · {t("other collection")}</span>
                                     )}
                                   </span>
                                 </div>
                               ))}
                               {s.outcomes.length > 3 && (
                                 <span style={{ fontSize: 10, color: COLORS.textDim, paddingLeft: 26 }}>
-                                  +{s.outcomes.length - 3} mais
+                                  +{s.outcomes.length - 3} {t("more")}
                                 </span>
                               )}
                             </div>
@@ -670,18 +674,18 @@ export default function ManipulatedSuggestions() {
                           <tr>
                             <td colSpan={14} style={{ background: COLORS.panelAlt }}>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
-                                Melhor caso: {fmtBRL(s.stats.bestCaseProfit)} ({s.stats.bestCaseRoi >= 0 ? "+" : ""}
-                                {s.stats.bestCaseRoi.toFixed(1)}%) · Pior caso: {fmtBRL(s.stats.worstCaseProfit)} (
+                                {t("Best case")}: {fmtBRL(s.stats.bestCaseProfit)} ({s.stats.bestCaseRoi >= 0 ? "+" : ""}
+                                {s.stats.bestCaseRoi.toFixed(1)}%) · {t("Worst case")}: {fmtBRL(s.stats.worstCaseProfit)} (
                                 {s.stats.worstCaseRoi >= 0 ? "+" : ""}
                                 {s.stats.worstCaseRoi.toFixed(1)}%)
                               </div>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
-                                Valor esperado líquido: {fmtBRL(s.stats.ev)} · Lucro líquido esperado:{" "}
-                                {fmtBRL(s.stats.evProfit)} · {s.outcomeCount} saídas possíveis
-                                {!s.crossCollection && <> (1/{s.outcomeCount} de chance cada)</>}
+                                {t("Net expected value")}: {fmtBRL(s.stats.ev)} · {t("Net expected profit")}:{" "}
+                                {fmtBRL(s.stats.evProfit)} · {s.outcomeCount} {t("possible outputs")}
+                                {!s.crossCollection && <> (1/{s.outcomeCount} {t("odds each")})</>}
                               </div>
                               <div style={{ fontSize: 11, color: COLORS.gold, marginBottom: 10 }}>
-                                Retorno já desconta a taxa do Mercado Steam (estimativa de 15%). Só entram saídas com preço direto para o wear previsto.
+                                {t("Return already deducts the estimated Steam Market fee (15% estimate). Only outputs with a direct price for the predicted wear are included.")}
                               </div>
                               <div
                                 style={{
@@ -693,36 +697,38 @@ export default function ManipulatedSuggestions() {
                                   border: `1px solid ${COLORS.border}`,
                                 }}
                               >
-                                <strong>Rodando esse contrato 10x</strong> (custo total {fmtBRL(s.cost * 10)}):
-                                ganho médio quando acerta {fmtBRL(s.stats.avgWinProfit)} por vez, perda média
-                                quando erra {fmtBRL(s.stats.avgLossProfit)} por vez.{" "}
+                                <strong>{t("Running this contract 10x")}</strong> ({t("total cost")} {fmtBRL(s.cost * 10)}):{" "}
+                                {t("average win")} {fmtBRL(s.stats.avgWinProfit)} {t("per hit")}, {t("average loss")}{" "}
+                                {fmtBRL(s.stats.avgLossProfit)} {t("per miss")}.{" "}
                                 {s.stats.breakEvenHits10 == null ? (
                                   <span style={{ color: COLORS.rust }}>
-                                    Nenhuma saída cobre o custo — não tem número de acertos que compense.
+                                    {t("No output covers the cost — no number of hits makes this worth it.")}
                                   </span>
                                 ) : s.stats.breakEvenHits10 === 0 ? (
-                                  <span style={{ color: COLORS.green }}>Nenhuma saída dá prejuízo — sem risco de perder no total das 10x.</span>
+                                  <span style={{ color: COLORS.green }}>{t("No output results in a loss — no risk of losing across all 10x.")}</span>
                                 ) : (
                                   <span style={{ color: COLORS.green }}>
-                                    Acertando pelo menos <strong>{s.stats.breakEvenHits10} de 10</strong> tentativas, você já sai no
-                                    positivo ou empatado (lucro esperado ×10: {fmtBRL(s.stats.evProfit * 10)}).
+                                    {t("Hitting at least")} <strong>{s.stats.breakEvenHits10} {t("of 10")}</strong> {t("attempts already gets you to break-even or profit")} ({t("expected profit")} ×10: {fmtBRL(s.stats.evProfit * 10)}).
                                   </span>
                                 )}
                               </div>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 10 }}>
-                                Mistura: {s.legs.map((l) => `${l.count}x ${l.isSouvenir ? "Lembrança " : ""}${l.skinName} (${l.wear})`).join(" + ")}{" "}
-                                → float relativo médio ~{fmtFloat(s.assumedAvgFloat)} (posição entre
-                                0–1 dentro da faixa própria de cada skin de entrada, não o float bruto
-                                — e pode virar um wear bem diferente do que "parece" na saída, se a
-                                skin de saída tiver faixa de float diferente da de entrada; meio da
-                                pior limite de cada wear escolhido, não o float exato de cada anúncio). Custo
-                                de{" "}
-                                {fmtBRL(s.cost)} contra {fmtBRL(s.baselineCost)} da estratégia uniforme
-                                (10x a entrada mais barata){s.baselineRoi != null && (
-                                  <> — que rende {s.baselineRoi >= 0 ? "+" : ""}
-                                  {s.baselineRoi.toFixed(1)}% sozinha, contra {s.stats.roi >= 0 ? "+" : ""}
-                                  {s.stats.roi.toFixed(1)}% misturando</>
-                                )}.
+                                {t("Mix")}: {s.legs.map((l) => `${l.count}x ${l.isSouvenir ? t("Souvenir") + " " : ""}${l.skinName} (${l.wear})`).join(" + ")}{" "}
+                                → {t("average relative float")} ~{fmtFloat(s.assumedAvgFloat)}{" "}
+                                {t(
+                                  "(a position between 0–1 within each input skin's own range, not the raw float — and it can land on a wear quite different from how it 'looks' on the output, if the output skin has a different float range than the input; based on the worst edge of each chosen wear, not the exact float of a specific listing)."
+                                )}{" "}
+                                {t("Cost of")}{" "}
+                                {fmtBRL(s.cost)} {t("vs")} {fmtBRL(s.baselineCost)} {t("for the uniform strategy (10x the cheapest input)")}
+                                {s.baselineRoi != null && (
+                                  <>
+                                    {" — "}
+                                    {t("which yields")} {s.baselineRoi >= 0 ? "+" : ""}
+                                    {s.baselineRoi.toFixed(1)}% {t("alone, vs")} {s.stats.roi >= 0 ? "+" : ""}
+                                    {s.stats.roi.toFixed(1)}% {t("mixing")}
+                                  </>
+                                )}
+                                .
                               </div>
                               {s.crossCollection && (
                                 <div
@@ -735,26 +741,25 @@ export default function ManipulatedSuggestions() {
                                     border: `1px solid ${COLORS.rust}`,
                                   }}
                                 >
-                                  <strong style={{ color: COLORS.rust }}>Cross-coleção:</strong>{" "}
+                                  <strong style={{ color: COLORS.rust }}>{t("Cross-collection:")}</strong>{" "}
                                   {[...new Set(
                                     s.legs.filter((l) => l.collectionTag !== s.collectionTag).map((l) => l.collectionName)
                                   )].length > 1 ? (
                                     <>
-                                      pernas vêm de <strong>{[...new Set(
+                                      {t("legs come from")} <strong>{[...new Set(
                                         s.legs.filter((l) => l.collectionTag !== s.collectionTag).map((l) => l.collectionName)
-                                      )].join(" e ")}</strong>
+                                      )].join(` ${t("and")} `)}</strong>
                                     </>
                                   ) : (
                                     <>
-                                      uma das pernas é de{" "}
+                                      {t("one of the legs is from")}{" "}
                                       <strong>{s.legs.find((l) => l.collectionTag !== s.collectionTag)?.collectionName}</strong>
                                     </>
                                   )}
-                                  , não (só) de {s.collectionName}. O jogo sorteia a saída proporcional a
-                                  quantos dos 10 itens vieram de cada coleção — então parte real da chance
-                                  (marcada como "outra coleção" abaixo) sai de lá. Isso é esperado, não um
-                                  erro: é a troca que faz o float ficar mais barato de atingir — quanto mais
-                                  coleções misturadas, maior o risco, mas às vezes o retorno também.
+                                  , {t("not (only) from")} {s.collectionName}.{" "}
+                                  {t(
+                                    "The game rolls the output proportionally to how many of the 10 items came from each collection — so a real part of the odds (marked \"other collection\" below) come from there. This is expected, not a bug: it's the trade-off that makes the float cheaper to reach — the more collections mixed, the higher the risk, but sometimes the return too."
+                                  )}
                                 </div>
                               )}
                               <div
@@ -769,9 +774,9 @@ export default function ManipulatedSuggestions() {
                                 }}
                               >
                                 <span style={{ fontSize: 10, color: COLORS.textDim, textTransform: "uppercase" }}>
-                                  Comprar exatamente isso (o link abre a página da arma+skin — marque
-                                  StatTrak™ e o wear na página antes de comprar, o link não escolhe
-                                  sozinho):
+                                  {t(
+                                    "Buy exactly this (the link opens the weapon+skin page — set StatTrak™ and wear on the page before buying, the link doesn't pick it by itself):"
+                                  )}
                                 </span>
                                 {s.legs.map((l, i) => (
                                   <a
@@ -789,8 +794,8 @@ export default function ManipulatedSuggestions() {
                                     }}
                                   >
                                     <ItemThumb iconUrl={l.iconUrl} rarity={s.tier} size={22} />
-                                    {l.count}x {l.isSouvenir && "Lembrança "}
-                                    {l.skinName} ({l.wear}) — {fmtBRL(l.unitPriceBrl)} cada
+                                    {l.count}x {l.isSouvenir && `${t("Souvenir")} `}
+                                    {l.skinName} ({l.wear}) — {fmtBRL(l.unitPriceBrl)} {t("each")}
                                     <ExternalLink size={12} />
                                   </a>
                                 ))}
@@ -803,7 +808,7 @@ export default function ManipulatedSuggestions() {
                                   setCalcOpenIdx(calcOpenIdx === idx ? null : idx);
                                 }}
                               >
-                                {calcOpenIdx === idx ? "Fechar calculadora de float" : "Calculadora de float"}
+                                {calcOpenIdx === idx ? t("Close float calculator") : t("Float calculator")}
                               </button>
                               {calcOpenIdx === idx && (
                                 <FloatCalculator
@@ -812,7 +817,7 @@ export default function ManipulatedSuggestions() {
                                     count: l.count,
                                     floatRange: l.floatRange,
                                     wearRange: l.wearFloatRange,
-                                    label: `${l.count}x ${l.isSouvenir ? "Lembrança " : ""}${l.skinName} (${l.wear})`,
+                                    label: `${l.count}x ${l.isSouvenir ? t("Souvenir") + " " : ""}${l.skinName} (${l.wear})`,
                                   }))}
                                 />
                               )}
@@ -833,11 +838,11 @@ export default function ManipulatedSuggestions() {
                                     <ItemThumb iconUrl={o.iconUrl} rarity={s.nextTier} size={26} />
                                     {o.name}
                                     <span style={{ color: o.priceIsEstimate ? COLORS.gold : COLORS.textDim }}>
-                                      ({wearLabel(o)})
+                                      ({wearLabel(o, t)})
                                     </span>
                                     {o.fromCollectionTag !== s.collectionTag && (
                                       <span style={{ color: COLORS.rust, fontSize: 10 }}>
-                                        outra coleção ({s.legs.find((l) => l.collectionTag === o.fromCollectionTag)?.collectionName})
+                                        {t("other collection")} ({s.legs.find((l) => l.collectionTag === o.fromCollectionTag)?.collectionName})
                                       </span>
                                     )}
                                     {o.marketHashName && (
@@ -847,14 +852,16 @@ export default function ManipulatedSuggestions() {
                                         rel="noreferrer"
                                         onClick={(e) => e.stopPropagation()}
                                         style={{ color: COLORS.gold, display: "flex", alignItems: "center" }}
-                                        title="Abrir a saída no mercado — confira o preço e a liquidez real antes de decidir. A Steam pede pra marcar StatTrak™ e o wear certo na própria página."
+                                        title={t(
+                                          "Open the output in the market — check the real price and liquidity before deciding. Steam requires you to select StatTrak™ and the right wear on the page itself."
+                                        )}
                                       >
                                         <ExternalLink size={11} />
                                       </a>
                                     )}
                                   </span>
                                   <span style={{ color: COLORS.textDim, whiteSpace: "nowrap" }}>
-                                    {o.prob.toFixed(1)}% · mercado {fmtBRL(o.price)} → líquido {fmtBRL(o.netPrice)} · {o.minListings} anúncios
+                                    {o.prob.toFixed(1)}% · {t("market")} {fmtBRL(o.price)} → {t("net")} {fmtBRL(o.netPrice)} · {o.minListings} {t("listings")}
                                   </span>
                                 </div>
                               ))}

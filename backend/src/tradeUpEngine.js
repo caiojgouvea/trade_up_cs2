@@ -69,9 +69,9 @@ function computeContractStats(cost, outcomes) {
   }
 
   let verdict;
-  if (roi > 15 && probLoss < 40) verdict = "Bom contrato";
-  else if (roi > 0) verdict = "Arriscado";
-  else verdict = "Furada";
+  if (roi > 15 && probLoss < 40) verdict = "Good deal";
+  else if (roi > 0) verdict = "Risky";
+  else verdict = "Trap";
 
   return {
     grossEv,
@@ -336,8 +336,15 @@ const REAL_COLLECTION_FILTER = "collection_tag IN (SELECT tag FROM collections W
 // pouquíssimos anúncios o "menor preço" do Steam não é confiável (pode ser
 // um vendedor patinho fora da curva), e ROIs de centenas de % baseados
 // nisso já apareceram na prática usando só 2 anúncios.
-async function buildInputMenu(minListings) {
-  const rate = await getUsdToBrlRate(db);
+// Taxa de conversão a aplicar sobre os preços em USD-cents guardados no
+// banco. USD é a moeda "nativa" (vem direto do Steam), então nesse caso o
+// fator é 1 — só busca a taxa de câmbio quando o pedido é em BRL.
+async function resolveRate(currency) {
+  return currency === "brl" ? await getUsdToBrlRate(db) : 1;
+}
+
+async function buildInputMenu(minListings, currency = "usd") {
+  const rate = await resolveRate(currency);
   const floatMap = getFloatRangeMap();
 
   const rows = db
@@ -429,8 +436,8 @@ function souvenirInputUnits(souvenirMenu, collectionTag, tier) {
 // normal da coleção de um dos inputs. Esses especiais aparecem no Market como
 // Covert + `special = 1`; não fazem parte da escada normal Classified →
 // Covert, então precisam de um scanner próprio.
-async function computeFiveCovertSuggestions({ minListings = 10 } = {}) {
-  const { rate, menu, collectionNames } = await buildInputMenu(minListings);
+async function computeFiveCovertSuggestions({ minListings = 10, currency = "usd" } = {}) {
+  const { rate, menu, collectionNames } = await buildInputMenu(minListings, currency);
   const floatMap = getFloatRangeMap();
   const specialRows = db
     .prepare(
@@ -567,8 +574,8 @@ function paretoFrontier(candidates, limit = 30) {
 // Gera sugestões de trade-up de UMA coleção só (o tipo clássico: 10 skins da
 // mesma coleção e raridade). Trade-ups misturando coleções ficam pra uma
 // próxima etapa (o espaço de busca cresce muito mais).
-export async function computeSingleCollectionSuggestions({ minListings = 10 } = {}) {
-  const { rate, menu, souvenirMenu, collectionNames } = await buildInputMenu(minListings);
+export async function computeSingleCollectionSuggestions({ minListings = 10, currency = "usd" } = {}) {
+  const { rate, menu, souvenirMenu, collectionNames } = await buildInputMenu(minListings, currency);
 
   const suggestions = [];
 
@@ -672,10 +679,10 @@ export async function computeSingleCollectionSuggestions({ minListings = 10 } = 
     }
   }
 
-  suggestions.push(...(await computeFiveCovertSuggestions({ minListings })));
+  suggestions.push(...(await computeFiveCovertSuggestions({ minListings, currency })));
 
   suggestions.sort((a, b) => b.stats.roi - a.stats.roi);
-  return { rate, suggestions };
+  return { rate, currency, suggestions };
 }
 
 // Float médio RELATIVO (normalizado pela faixa própria da skin, ver
@@ -950,8 +957,8 @@ function bestTripleMix(candidates, outputsForTag, stattrak, rate) {
 // Classified. Buscar contra toda unidade de toda coleção em Consumer/
 // Industrial/Mil-Spec é caro (pode levar horas), por isso isso só roda
 // quando pedido explicitamente, nunca na rota síncrona normal.
-export async function computeManipulatedSuggestions({ minListings = 10, exhaustive = false } = {}) {
-  const { rate, menu, souvenirMenu, collectionNames } = await buildInputMenu(minListings);
+export async function computeManipulatedSuggestions({ minListings = 10, exhaustive = false, currency = "usd" } = {}) {
+  const { rate, menu, souvenirMenu, collectionNames } = await buildInputMenu(minListings, currency);
 
   const suggestions = [];
 
@@ -1116,7 +1123,7 @@ export async function computeManipulatedSuggestions({ minListings = 10, exhausti
   }
 
   suggestions.sort((a, b) => b.stats.roi - a.stats.roi);
-  return { rate, suggestions };
+  return { rate, currency, suggestions };
 }
 
 // Pra cada raridade (exceto a última) dentro de UMA coleção, devolve as
@@ -1125,8 +1132,8 @@ export async function computeManipulatedSuggestions({ minListings = 10, exhausti
 // listagem de preços — ao contrário de computeSingleCollectionSuggestions,
 // não escolhe um input mais barato: quem chama decide o custo (o preço do
 // item específico da linha).
-export async function getCollectionOutcomeMenu(collectionTag) {
-  const rate = await getUsdToBrlRate(db);
+export async function getCollectionOutcomeMenu(collectionTag, currency = "usd") {
+  const rate = await resolveRate(currency);
 
   const collection = db.prepare("SELECT name FROM collections WHERE tag = ?").get(collectionTag);
   if (!collection || !/^The .+ Collection$/.test(collection.name)) {

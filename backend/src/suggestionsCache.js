@@ -8,21 +8,23 @@ export function getSuggestionCache(kind) {
     minListings: row.min_listings,
     exhaustive: !!row.exhaustive,
     rate: row.rate,
+    currency: row.currency,
     pricingVersion: row.pricing_version,
     suggestions: JSON.parse(row.payload),
   };
 }
 
-export function saveSuggestionCache(kind, { minListings, exhaustive, rate, suggestions }) {
+export function saveSuggestionCache(kind, { minListings, exhaustive, rate, currency = "usd", suggestions }) {
   db.prepare(
-    `INSERT INTO suggestion_cache (kind, computed_at, min_listings, exhaustive, rate, pricing_version, payload)
-     VALUES (?, ?, ?, ?, ?, 'net-strict-v2', ?)
+    `INSERT INTO suggestion_cache (kind, computed_at, min_listings, exhaustive, rate, currency, pricing_version, payload)
+     VALUES (?, ?, ?, ?, ?, ?, 'net-strict-v4', ?)
      ON CONFLICT(kind) DO UPDATE SET
        computed_at = excluded.computed_at,
        min_listings = excluded.min_listings,
        exhaustive = excluded.exhaustive,
        rate = excluded.rate,
+       currency = excluded.currency,
        pricing_version = excluded.pricing_version,
        payload = excluded.payload`
-  ).run(kind, new Date().toISOString(), minListings, exhaustive ? 1 : 0, rate, JSON.stringify(suggestions));
+  ).run(kind, new Date().toISOString(), minListings, exhaustive ? 1 : 0, rate, currency, JSON.stringify(suggestions));
 }

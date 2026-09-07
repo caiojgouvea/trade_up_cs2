@@ -13,6 +13,7 @@ const state = {
   finishedAt: null,
   minListings: null,
   exhaustive: false,
+  currency: "usd",
   error: null,
 };
 
@@ -22,7 +23,7 @@ export function getManipulatedJobStatus() {
 
 // Só um de cada vez — o job já é pesado o bastante sem rodar duas cópias
 // simultâneas brigando pela CPU.
-export function startManipulatedJob({ minListings = 10, exhaustive = false } = {}) {
+export function startManipulatedJob({ minListings = 10, exhaustive = false, currency = "usd" } = {}) {
   if (state.running) return getManipulatedJobStatus();
 
   state.running = true;
@@ -30,16 +31,18 @@ export function startManipulatedJob({ minListings = 10, exhaustive = false } = {
   state.finishedAt = null;
   state.minListings = minListings;
   state.exhaustive = exhaustive;
+  state.currency = currency;
   state.error = null;
 
-  const worker = new Worker(WORKER_PATH, { workerData: { minListings, exhaustive } });
+  const worker = new Worker(WORKER_PATH, { workerData: { minListings, exhaustive, currency } });
 
   worker.on("message", (msg) => {
     if (msg.ok) {
-      saveSuggestionCache("manipulated", {
+      saveSuggestionCache(`manipulated_${currency}`, {
         minListings,
         exhaustive,
         rate: msg.result.rate,
+        currency,
         suggestions: msg.result.suggestions,
       });
       recordSuggestionHistory({

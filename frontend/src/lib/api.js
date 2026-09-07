@@ -4,7 +4,7 @@ async function request(path, options) {
   const res = await fetch(`${BASE}${path}`, options);
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error(data?.error || `Erro ${res.status} ao chamar ${path}`);
+    throw new Error(data?.error || `Error ${res.status} calling ${path}`);
   }
   return data;
 }
@@ -21,8 +21,8 @@ export function refreshCollection(tag) {
   return request(`/collections/${encodeURIComponent(tag)}/refresh`, { method: "POST" });
 }
 
-export function getCollectionItems(tag) {
-  return request(`/collections/${encodeURIComponent(tag)}/items`);
+export function getCollectionItems(tag, currency = "usd") {
+  return request(`/collections/${encodeURIComponent(tag)}/items?currency=${currency}`);
 }
 
 export function getExactPrice(marketHashName) {
@@ -41,16 +41,16 @@ export function getSyncAllStatus() {
   return request("/collections/sync-all/status");
 }
 
-export function getSuggestions(minListings = 5) {
-  return request(`/suggestions?minListings=${minListings}`);
+export function getSuggestions(minListings = 5, currency = "usd") {
+  return request(`/suggestions?minListings=${minListings}&currency=${currency}`);
 }
 
-export function getManipulatedSuggestions(minListings = 10) {
-  return request(`/suggestions/manipulated?minListings=${minListings}`);
+export function getManipulatedSuggestions(minListings = 10, currency = "usd") {
+  return request(`/suggestions/manipulated?minListings=${minListings}&currency=${currency}`);
 }
 
-export function refreshManipulatedSuggestions(minListings = 10, exhaustive = false) {
-  const params = new URLSearchParams({ minListings: String(minListings) });
+export function refreshManipulatedSuggestions(minListings = 10, exhaustive = false, currency = "usd") {
+  const params = new URLSearchParams({ minListings: String(minListings), currency });
   if (exhaustive) params.set("exhaustive", "1");
   return request(`/suggestions/manipulated/refresh?${params}`, { method: "POST" });
 }

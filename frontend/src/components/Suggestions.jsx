@@ -17,6 +17,7 @@ import { fmtBRL, fmtFloat } from "../lib/tradeUpMath";
 import { rarityColor } from "../lib/rarity";
 import { loadFavoriteSuggestions, saveFavoriteSuggestions, suggestionKey } from "../lib/favorites";
 import { getSuggestions, syncAllCollections, getSyncAllStatus } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 import SuggestionsTooltip from "./SuggestionsTooltip";
 import ItemThumb from "./ItemThumb";
 import FloatCalculator from "./FloatCalculator";
@@ -26,25 +27,26 @@ function steamMarketUrl(marketHashName) {
   return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketHashName)}`;
 }
 
-function wearLabel(o) {
-  if (!o.predictedWear) return "média entre wears";
+function wearLabel(o, t) {
+  if (!o.predictedWear) return t("average across wears");
   const withFloat = o.predictedFloatValue != null ? ` · float ${fmtFloat(o.predictedFloatValue)}` : "";
-  return (o.priceIsEstimate ? `${o.predictedWear}, preço estimado` : o.predictedWear) + withFloat;
+  return (o.priceIsEstimate ? `${o.predictedWear}, ${t("estimated price")}` : o.predictedWear) + withFloat;
 }
 
-function breakEvenLabel(stats) {
-  if (stats.breakEvenHits10 == null) return "nunca";
-  if (stats.breakEvenHits10 === 0) return "sem risco";
+function breakEvenLabel(stats, t) {
+  if (stats.breakEvenHits10 == null) return t("never");
+  if (stats.breakEvenHits10 === 0) return t("risk-free");
   return `≥${stats.breakEvenHits10}/10`;
 }
 
 const VERDICT_COLOR = {
-  "Bom contrato": COLORS.green,
-  Arriscado: COLORS.gold,
-  Furada: COLORS.rust,
+  "Good deal": COLORS.green,
+  Risky: COLORS.gold,
+  Trap: COLORS.rust,
 };
 
 export default function Suggestions() {
+  const { t, currency } = useI18n();
   const [suggestions, setSuggestions] = useState([]);
   const [rate, setRate] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -84,13 +86,13 @@ export default function Suggestions() {
       clearInterval(statusPollRef.current);
       clearInterval(reloadPollRef.current);
     };
-  }, []);
+  }, [currency]);
 
   async function load() {
     setLoading(true);
     setError("");
     try {
-      const data = await getSuggestions(minListings);
+      const data = await getSuggestions(minListings, currency);
       setSuggestions(data.suggestions);
       setRate(data.rate);
     } catch (e) {
@@ -244,12 +246,11 @@ export default function Suggestions() {
       <div style={{ maxWidth: "min(1800px, 96vw)", margin: "0 auto 20px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Sugestões de Trade-Up</h1>
+            <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{t("Trade-Up Suggestions")}</h1>
             <p style={{ color: COLORS.textDim, fontSize: 13, marginTop: 6, maxWidth: 640 }}>
-              Calculado automaticamente a partir das coleções já sincronizadas: pra cada coleção e
-              raridade, o input mais barato disponível contra as saídas possíveis da raridade
-              seguinte. Por enquanto só considera trade-ups de uma coleção só (misturar coleções
-              ainda não).
+              {t(
+                "Computed automatically from already-synced collections: for each collection and rarity, the cheapest available input against the possible outputs of the next rarity. Only single-collection trade-ups for now (mixing collections is elsewhere)."
+              )}
             </p>
           </div>
           <button
@@ -259,7 +260,7 @@ export default function Suggestions() {
             disabled={syncStatus?.running}
           >
             <RefreshCw size={13} className={syncStatus?.running ? "tuc-spin" : ""} />
-            {syncStatus?.running ? "Sincronizando coleções..." : "Sincronizar todas as coleções"}
+            {syncStatus?.running ? t("Syncing collections...") : t("Sync all collections")}
           </button>
         </div>
 
@@ -276,11 +277,11 @@ export default function Suggestions() {
               fontFamily: "'IBM Plex Mono', monospace",
             }}
           >
-            {syncStatus.processed}/{syncStatus.total} coleções · buscando agora:{" "}
+            {syncStatus.processed}/{syncStatus.total} {t("collections")} · {t("fetching now")}:{" "}
             {syncStatus.currentName ?? "..."}
             {syncStatus.errors.length > 0 && (
               <span style={{ color: COLORS.rust, marginLeft: 8 }}>
-                {syncStatus.errors.length} erro(s)
+                {syncStatus.errors.length} {t("error(s)")}
               </span>
             )}
           </div>
@@ -315,7 +316,10 @@ export default function Suggestions() {
             marginBottom: 14,
           }}
         >
-          <strong style={{ color: COLORS.green }}>Modo conservador:</strong> o retorno é líquido após a taxa estimada do Mercado Steam e só usa o preço direto do wear previsto para todas as saídas. Sem preço aproximado, sem média entre wears.
+          <strong style={{ color: COLORS.green }}>{t("Conservative mode:")}</strong>{" "}
+          {t(
+            "returns are net of the estimated Steam Market fee and only use the direct price of the predicted wear for every output. No estimated prices, no averaging across wears."
+          )}
         </div>
 
         <div
@@ -332,7 +336,7 @@ export default function Suggestions() {
           }}
         >
           <label style={{ fontSize: 11, color: COLORS.textDim, display: "flex", alignItems: "center", gap: 6 }}>
-            Liquidez mín. (anúncios ativos)
+            {t("Min. liquidity (active listings)")}
             <input
               className="tuc-input"
               style={{ width: 70 }}
@@ -349,9 +353,9 @@ export default function Suggestions() {
             value={stattrakFilter}
             onChange={(e) => setStattrakFilter(e.target.value)}
           >
-            <option value="all">Normal + StatTrak</option>
-            <option value="normal">Só Normal</option>
-            <option value="stattrak">Só StatTrak</option>
+            <option value="all">{t("Normal + StatTrak")}</option>
+            <option value="normal">{t("Normal only")}</option>
+            <option value="stattrak">{t("StatTrak only")}</option>
           </select>
           <select
             className="tuc-input"
@@ -359,10 +363,10 @@ export default function Suggestions() {
             value={rarityFilter}
             onChange={(e) => setRarityFilter(e.target.value)}
           >
-            <option value="all">Qualquer raridade de saída</option>
+            <option value="all">{t("Any output rarity")}</option>
             {rarityOptions.map((r) => (
               <option key={r} value={r}>
-                Saída: {r}
+                {t("Output")}: {r}
               </option>
             ))}
           </select>
@@ -372,23 +376,23 @@ export default function Suggestions() {
             value={riskFilter}
             onChange={(e) => setRiskFilter(e.target.value)}
           >
-            <option value="all">Qualquer risco</option>
-            <option value="high">Risco alto (45%+)</option>
-            <option value="fifty">50/50 exato</option>
+            <option value="all">{t("Any risk")}</option>
+            <option value="high">{t("High risk (45%+)")}</option>
+            <option value="fifty">{t("Exact 50/50")}</option>
           </select>
           <input
             className="tuc-input"
             style={{ flex: 1, minWidth: 180 }}
-            placeholder="Filtrar por coleção ou skin..."
+            placeholder={t("Filter by collection or skin...")}
             value={textFilter}
             onChange={(e) => setTextFilter(e.target.value)}
           />
           <label style={{ fontSize: 11, color: COLORS.textDim, display: "flex", alignItems: "center", gap: 6 }}>
-            Custo
+            {t("Cost")}
             <input
               className="tuc-input"
               style={{ width: 80 }}
-              placeholder="mín."
+              placeholder={t("min.")}
               value={minCost}
               onChange={(e) => setMinCost(e.target.value)}
             />
@@ -396,17 +400,17 @@ export default function Suggestions() {
             <input
               className="tuc-input"
               style={{ width: 80 }}
-              placeholder="máx."
+              placeholder={t("max.")}
               value={maxCost}
               onChange={(e) => setMaxCost(e.target.value)}
             />
           </label>
           <label style={{ fontSize: 11, color: COLORS.textDim, display: "flex", alignItems: "center", gap: 6 }}>
-            Risco %
+            {t("Risk %")}
             <input
               className="tuc-input"
               style={{ width: 60 }}
-              placeholder="mín."
+              placeholder={t("min.")}
               value={minRisk}
               onChange={(e) => setMinRisk(e.target.value)}
             />
@@ -414,12 +418,12 @@ export default function Suggestions() {
             <input
               className="tuc-input"
               style={{ width: 60 }}
-              placeholder="máx."
+              placeholder={t("max.")}
               value={maxRisk}
               onChange={(e) => setMaxRisk(e.target.value)}
             />
           </label>
-          {rate && (
+          {rate != null && currency === "brl" && (
             <span style={{ fontSize: 11, color: COLORS.textDim, marginLeft: "auto" }}>
               1 USD ≈ {fmtBRL(rate)}
             </span>
@@ -427,7 +431,7 @@ export default function Suggestions() {
         </div>
 
         {loading ? (
-          <div style={{ color: COLORS.textDim, fontSize: 13 }}>Calculando...</div>
+          <div style={{ color: COLORS.textDim, fontSize: 13 }}>{t("Calculating...")}</div>
         ) : filtered.length === 0 ? (
           <div
             style={{
@@ -440,9 +444,9 @@ export default function Suggestions() {
               fontSize: 13,
             }}
           >
-            Nenhuma sugestão ainda. Sincroniza pelo menos uma coleção na aba "Coleções & Preços"
-            (ou clica em "Sincronizar todas as coleções" acima) — precisa de preço em duas
-            raridades seguidas dentro da mesma coleção pra calcular alguma coisa.
+            {t(
+              'No suggestions yet. Sync at least one collection on the "Collections & Prices" tab (or click "Sync all collections" above) — it needs a price at two consecutive rarities in the same collection to compute anything.'
+            )}
           </div>
         ) : (
           <>
@@ -455,24 +459,24 @@ export default function Suggestions() {
                 marginBottom: 16,
               }}
             >
-              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>Risco × Retorno</div>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>{t("Risk × Return")}</div>
               <ResponsiveContainer width="100%" height={300}>
                 <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 0 }}>
                   <CartesianGrid stroke={COLORS.border} strokeDasharray="3 3" />
                   <XAxis
                     type="number"
                     dataKey="probLoss"
-                    name="Risco"
+                    name={t("Risk")}
                     domain={[0, 100]}
                     tick={{ fill: COLORS.textDim, fontSize: 11, fontFamily: "IBM Plex Mono" }}
-                    label={{ value: "Risco de perda (%)", position: "insideBottom", offset: -12, fill: COLORS.textDim, fontSize: 11 }}
+                    label={{ value: t("Loss risk (%)"), position: "insideBottom", offset: -12, fill: COLORS.textDim, fontSize: 11 }}
                   />
                   <YAxis
                     type="number"
                     dataKey="roi"
-                    name="Retorno"
+                    name={t("Return")}
                     tick={{ fill: COLORS.textDim, fontSize: 11, fontFamily: "IBM Plex Mono" }}
-                    label={{ value: "Retorno esperado (%)", angle: -90, position: "insideLeft", fill: COLORS.textDim, fontSize: 11 }}
+                    label={{ value: t("Expected return (%)"), angle: -90, position: "insideLeft", fill: COLORS.textDim, fontSize: 11 }}
                   />
                   <ZAxis type="number" dataKey="cost" range={[60, 350]} />
                   <ReferenceLine y={0} stroke={COLORS.textDim} strokeDasharray="4 4" />
@@ -485,10 +489,10 @@ export default function Suggestions() {
                 </ScatterChart>
               </ResponsiveContainer>
               <div style={{ display: "flex", gap: 16, fontSize: 11, color: COLORS.textDim, marginTop: 4 }}>
-                <span><span style={{ color: COLORS.green }}>●</span> Bom contrato</span>
-                <span><span style={{ color: COLORS.gold }}>●</span> Arriscado</span>
-                <span><span style={{ color: COLORS.rust }}>●</span> Furada</span>
-                <span style={{ marginLeft: "auto" }}>tamanho da bolha = custo</span>
+                <span><span style={{ color: COLORS.green }}>●</span> {t("Good deal")}</span>
+                <span><span style={{ color: COLORS.gold }}>●</span> {t("Risky")}</span>
+                <span><span style={{ color: COLORS.rust }}>●</span> {t("Trap")}</span>
+                <span style={{ marginLeft: "auto" }}>{t("bubble size = cost")}</span>
               </div>
             </div>
 
@@ -498,25 +502,25 @@ export default function Suggestions() {
                   <thead>
                     <tr>
                       <th></th>
-                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("collectionName")}>Coleção</th>
-                      <th>Raridade</th>
+                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("collectionName")}>{t("Collection")}</th>
+                      <th>{t("Rarity")}</th>
                       <th>ST</th>
-                      <th>Entrada mais barata</th>
-                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("cost")}>Custo</th>
-                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.bestCaseRoi")} title="Lucro líquido se sair a saída mais cara possível">Melhor caso</th>
-                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.roi")} title="Média ponderada pelas chances de cada saída">Esperado</th>
-                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.worstCaseRoi")} title="Lucro líquido se sair a saída mais barata possível">Pior caso</th>
-                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.probLoss")}>Risco</th>
+                      <th>{t("Cheapest input")}</th>
+                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("cost")}>{t("Cost")}</th>
+                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.bestCaseRoi")} title={t("Net profit if the most expensive possible output comes out")}>{t("Best case")}</th>
+                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.roi")} title={t("Average weighted by the odds of each output")}>{t("Expected")}</th>
+                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.worstCaseRoi")} title={t("Net profit if the cheapest possible output comes out")}>{t("Worst case")}</th>
+                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.probLoss")}>{t("Risk")}</th>
                       <th
                         style={{ cursor: "pointer" }}
                         onClick={() => toggleSort("stats.breakEvenHits10")}
-                        title="Rodando esse contrato 10x, quantos acertos (saída que cobre o custo) você precisa pra não sair no prejuízo"
+                        title={t("Running this contract 10x, how many hits (an output that covers the cost) you need to not end up at a loss")}
                       >
-                        Empate em 10x
+                        {t("Break-even in 10x")}
                       </th>
-                      <th>Veredito</th>
-                      <th>Float p/ melhor saída</th>
-                      <th>Saídas possíveis</th>
+                      <th>{t("Verdict")}</th>
+                      <th>{t("Float for best output")}</th>
+                      <th>{t("Possible outputs")}</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -534,7 +538,7 @@ export default function Suggestions() {
                                 e.stopPropagation();
                                 toggleFavorite(suggestionKey(s));
                               }}
-                              aria-label="Favoritar"
+                              aria-label={t("Favorite")}
                               style={{
                                 color: favorites.has(suggestionKey(s)) ? COLORS.gold : COLORS.textDim,
                               }}
@@ -561,7 +565,7 @@ export default function Suggestions() {
                               <ItemThumb iconUrl={s.inputIconUrl} rarity={s.tier} size={28} />
                               <span>
                                 {s.inputIsSouvenir && (
-                                  <span style={{ color: COLORS.gold }}>Lembrança </span>
+                                  <span style={{ color: COLORS.gold }}>{t("Souvenir")} </span>
                                 )}
                                 {s.inputSkin}
                                 {s.stattrak && <span style={{ color: COLORS.gold }}> (StatTrak™)</span>}
@@ -570,13 +574,13 @@ export default function Suggestions() {
                                     style={{ color: COLORS.textDim }}
                                     title={
                                       s.inputFloatRange
-                                        ? `Faixa de float própria dessa skin: ${fmtFloat(s.inputFloatRange.min)}–${fmtFloat(
-                                            s.inputFloatRange.max
-                                          )}. "${s.inputWear}" aqui é float bruto ${fmtFloat(
-                                            s.inputWearFloatRange?.min
-                                          )}–${fmtFloat(s.inputWearFloatRange?.max)} — o desgaste RELATIVO
-                                          (o que importa pra saída) depende dessa faixa própria, não é igual
-                                          entre skins diferentes.`
+                                        ? t(
+                                            `This skin's own float range: ${fmtFloat(s.inputFloatRange.min)}–${fmtFloat(
+                                              s.inputFloatRange.max
+                                            )}. "${s.inputWear}" here is raw float ${fmtFloat(
+                                              s.inputWearFloatRange?.min
+                                            )}–${fmtFloat(s.inputWearFloatRange?.max)} — the RELATIVE wear (what matters for the output) depends on this own range, it isn't the same across different skins.`
+                                          )
                                         : undefined
                                     }
                                   >
@@ -591,7 +595,9 @@ export default function Suggestions() {
                                     rel="noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     style={{ color: COLORS.gold, marginLeft: 6, display: "inline-flex", verticalAlign: "middle" }}
-                                    title="Abrir no mercado — a Steam mudou o site: StatTrak™/Lembrança e wear agora são filtros dentro da mesma página, não escolhidos pelo link. Marque manualmente antes de comprar."
+                                    title={t(
+                                      "Open in market — Steam changed the site: StatTrak™/Souvenir and wear are now filters within the same page, not chosen by the link. Set them manually before buying."
+                                    )}
                                   >
                                     <ExternalLink size={11} />
                                   </a>
@@ -599,7 +605,7 @@ export default function Suggestions() {
                               </span>
                             </div>
                           </td>
-                          <td title={`${s.inputCount ?? 10} inputs`}>{fmtBRL(s.cost)}</td>
+                          <td title={`${s.inputCount ?? 10} ${t("inputs")}`}>{fmtBRL(s.cost)}</td>
                           <td style={{ color: s.stats.bestCaseProfit >= 0 ? COLORS.green : COLORS.rust }}>
                             {s.stats.bestCaseRoi >= 0 ? "+" : ""}
                             {s.stats.bestCaseRoi.toFixed(1)}%
@@ -615,9 +621,11 @@ export default function Suggestions() {
                           <td>{s.stats.probLoss.toFixed(0)}%</td>
                           <td
                             style={{ color: s.stats.breakEvenHits10 == null ? COLORS.rust : COLORS.textDim, fontSize: 11 }}
-                            title="Acertos = saídas cujo valor líquido cobre o custo. Assume ganho médio e perda média constantes a cada tentativa (aproximação)."
+                            title={t(
+                              "Hits = outputs whose net value covers the cost. Assumes constant average win and average loss per attempt (approximation)."
+                            )}
                           >
-                            {breakEvenLabel(s.stats)}
+                            {breakEvenLabel(s.stats, t)}
                           </td>
                           <td>
                             <span
@@ -632,16 +640,18 @@ export default function Suggestions() {
                                 textAlign: "center",
                               }}
                             >
-                              {s.stats.verdict}
+                              {t(s.stats.verdict)}
                             </span>
                           </td>
                           <td style={{ fontSize: 11 }}>
                             {!s.floatInfo?.available ? (
-                              <span style={{ color: COLORS.textDim }}>sem dado</span>
+                              <span style={{ color: COLORS.textDim }}>{t("no data")}</span>
                             ) : s.floatInfo.feasibleWithCheapestInput == null ? (
                               <span
                                 style={{ color: COLORS.textDim }}
-                                title={`Melhor saída: ${s.floatInfo.bestOutcomeName} (${s.floatInfo.bestOutcomeWear}) · precisa de float médio entre ${fmtFloat(s.floatInfo.requiredAvgFloatMin)} e ${fmtFloat(s.floatInfo.requiredAvgFloatMax)}`}
+                                title={t(
+                                  `Best output: ${s.floatInfo.bestOutcomeName} (${s.floatInfo.bestOutcomeWear}) · needs average float between ${fmtFloat(s.floatInfo.requiredAvgFloatMin)} and ${fmtFloat(s.floatInfo.requiredAvgFloatMax)}`
+                                )}
                               >
                                 {fmtFloat(s.floatInfo.requiredAvgFloatMin)}–{fmtFloat(s.floatInfo.requiredAvgFloatMax)}
                               </span>
@@ -653,13 +663,15 @@ export default function Suggestions() {
                                   gap: 4,
                                   color: s.floatInfo.feasibleWithCheapestInput ? COLORS.green : COLORS.rust,
                                 }}
-                                title={`Melhor saída: ${s.floatInfo.bestOutcomeName} (${s.floatInfo.bestOutcomeWear}, ${fmtBRL(
-                                  s.floatInfo.bestOutcomePrice
-                                )}) precisa de float médio entre ${fmtFloat(s.floatInfo.requiredAvgFloatMin)}–${fmtFloat(
-                                  s.floatInfo.requiredAvgFloatMax
-                                )}. Comprando o input mais barato (${s.floatInfo.inputWear}), seu float fica entre ${fmtFloat(
-                                  s.floatInfo.inputAchievableFloatMin
-                                )}–${fmtFloat(s.floatInfo.inputAchievableFloatMax)}.`}
+                                title={t(
+                                  `Best output: ${s.floatInfo.bestOutcomeName} (${s.floatInfo.bestOutcomeWear}, ${fmtBRL(
+                                    s.floatInfo.bestOutcomePrice
+                                  )}) needs average float between ${fmtFloat(s.floatInfo.requiredAvgFloatMin)}–${fmtFloat(
+                                    s.floatInfo.requiredAvgFloatMax
+                                  )}. Buying the cheapest input (${s.floatInfo.inputWear}), your float lands between ${fmtFloat(
+                                    s.floatInfo.inputAchievableFloatMin
+                                  )}–${fmtFloat(s.floatInfo.inputAchievableFloatMax)}.`
+                                )}
                               >
                                 {s.floatInfo.feasibleWithCheapestInput ? <Check size={12} /> : <X size={12} />}
                                 {fmtFloat(s.floatInfo.requiredAvgFloatMin)}–{fmtFloat(s.floatInfo.requiredAvgFloatMax)}
@@ -670,7 +682,7 @@ export default function Suggestions() {
                             <div
                               style={{ display: "flex", flexDirection: "column", gap: 3 }}
                               title={s.outcomes
-                                .map((o) => `${o.name} (${wearLabel(o)}) · ${fmtBRL(o.price)} · ${o.minListings} anúncios`)
+                                .map((o) => `${o.name} (${wearLabel(o, t)}) · ${fmtBRL(o.price)} · ${o.minListings} ${t("listings")}`)
                                 .join(" | ")}
                             >
                               {s.outcomes.slice(0, 3).map((o, i) => (
@@ -698,7 +710,7 @@ export default function Suggestions() {
                               ))}
                               {s.outcomes.length > 3 && (
                                 <span style={{ fontSize: 10, color: COLORS.textDim, paddingLeft: 26 }}>
-                                  +{s.outcomes.length - 3} mais
+                                  +{s.outcomes.length - 3} {t("more")}
                                 </span>
                               )}
                             </div>
@@ -709,18 +721,20 @@ export default function Suggestions() {
                           <tr>
                             <td colSpan={15} style={{ background: COLORS.panelAlt }}>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
-                                Melhor caso: {fmtBRL(s.stats.bestCaseProfit)} ({s.stats.bestCaseRoi >= 0 ? "+" : ""}
-                                {s.stats.bestCaseRoi.toFixed(1)}%) · Pior caso: {fmtBRL(s.stats.worstCaseProfit)} (
+                                {t("Best case")}: {fmtBRL(s.stats.bestCaseProfit)} ({s.stats.bestCaseRoi >= 0 ? "+" : ""}
+                                {s.stats.bestCaseRoi.toFixed(1)}%) · {t("Worst case")}: {fmtBRL(s.stats.worstCaseProfit)} (
                                 {s.stats.worstCaseRoi >= 0 ? "+" : ""}
                                 {s.stats.worstCaseRoi.toFixed(1)}%)
                               </div>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
-                                Valor esperado líquido: {fmtBRL(s.stats.ev)} · Lucro líquido esperado:{" "}
-                                {fmtBRL(s.stats.evProfit)} · valor bruto antes da taxa: {fmtBRL(s.stats.grossEv)} · {s.outcomeCount} saídas possíveis (1/
-                                {s.outcomeCount} de chance cada)
+                                {t("Net expected value")}: {fmtBRL(s.stats.ev)} · {t("Net expected profit")}:{" "}
+                                {fmtBRL(s.stats.evProfit)} · {t("gross value before fee")}: {fmtBRL(s.stats.grossEv)} · {s.outcomeCount} {t("possible outputs")} (1/
+                                {s.outcomeCount} {t("odds each")})
                               </div>
                               <div style={{ fontSize: 11, color: COLORS.gold, marginBottom: 6 }}>
-                                Retorno já desconta a taxa do Mercado Steam (estimativa de 15%; o arredondamento final pode variar alguns centavos). Só entram saídas cujo wear previsto tem preço direto e liquidez suficiente.
+                                {t(
+                                  "Return already deducts the estimated Steam Market fee (15% estimate; final rounding may vary a few cents). Only outputs whose predicted wear has a direct price and enough liquidity are included."
+                                )}
                               </div>
                               <div
                                 style={{
@@ -732,38 +746,30 @@ export default function Suggestions() {
                                   border: `1px solid ${COLORS.border}`,
                                 }}
                               >
-                                <strong>Rodando esse contrato 10x</strong> (custo total {fmtBRL(s.cost * 10)}):
-                                ganho médio quando acerta {fmtBRL(s.stats.avgWinProfit)} por vez, perda média
-                                quando erra {fmtBRL(s.stats.avgLossProfit)} por vez.{" "}
+                                <strong>{t("Running this contract 10x")}</strong> ({t("total cost")} {fmtBRL(s.cost * 10)}):{" "}
+                                {t("average win")} {fmtBRL(s.stats.avgWinProfit)} {t("per hit")}, {t("average loss")}{" "}
+                                {fmtBRL(s.stats.avgLossProfit)} {t("per miss")}.{" "}
                                 {s.stats.breakEvenHits10 == null ? (
                                   <span style={{ color: COLORS.rust }}>
-                                    Nenhuma saída cobre o custo — não tem número de acertos que compense.
+                                    {t("No output covers the cost — no number of hits makes this worth it.")}
                                   </span>
                                 ) : s.stats.breakEvenHits10 === 0 ? (
-                                  <span style={{ color: COLORS.green }}>Nenhuma saída dá prejuízo — sem risco de perder no total das 10x.</span>
+                                  <span style={{ color: COLORS.green }}>{t("No output results in a loss — no risk of losing across all 10x.")}</span>
                                 ) : (
                                   <span style={{ color: COLORS.green }}>
-                                    Acertando pelo menos <strong>{s.stats.breakEvenHits10} de 10</strong> tentativas, você já sai no
-                                    positivo ou empatado (lucro esperado ×10: {fmtBRL(s.stats.evProfit * 10)}).
+                                    {t("Hitting at least")} <strong>{s.stats.breakEvenHits10} {t("of 10")}</strong> {t("attempts already gets you to break-even or profit")} ({t("expected profit")} ×10: {fmtBRL(s.stats.evProfit * 10)}).
                                   </span>
                                 )}
                               </div>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
                                 {s.assumedAvgFloat != null ? (
-                                  <>
-                                    Preço de cada saída já considera o wear real previsto — assumindo
-                                    que você compra o input em <strong>{s.inputWear}</strong> (float
-                                    relativo ~{fmtFloat(s.assumedAvgFloat)}, ou seja: {fmtFloat(s.assumedAvgFloat * 100)}
-                                    % do caminho entre a skin mais nova e mais gasta que essa entrada
-                                    específica alcança — não o float bruto dela, e pode virar um wear
-                                    diferente na saída se a skin de saída tiver uma faixa de float
-                                    diferente da de entrada). Não é uma média entre wears.
-                                  </>
+                                  t(
+                                    `The price of each output already accounts for the real predicted wear — assuming you buy the input at ${s.inputWear} (relative float ~${fmtFloat(s.assumedAvgFloat)}, i.e. ${fmtFloat(s.assumedAvgFloat * 100)}% of the way between the newest and most worn version this specific input reaches — not its raw float, and it may land on a different wear on the output if the output skin has a different float range than the input). Not an average across wears.`
+                                  )
                                 ) : (
-                                  <>
-                                    Sem dado de float pra essa entrada — os preços das saídas aqui são
-                                    uma média entre os wears possíveis (aproximação).
-                                  </>
+                                  t(
+                                    "No float data for this input — the output prices here are an average across the possible wears (approximation)."
+                                  )
                                 )}
                               </div>
                               {s.floatInfo?.available && (
@@ -779,29 +785,27 @@ export default function Suggestions() {
                                     color: COLORS.text,
                                   }}
                                 >
-                                  Melhor saída alcançável:{" "}
+                                  {t("Best reachable output")}:{" "}
                                   <strong>
                                     {s.floatInfo.bestOutcomeName} ({s.floatInfo.bestOutcomeWear})
                                   </strong>{" "}
-                                  por {fmtBRL(s.floatInfo.bestOutcomePrice)} — precisa de float médio de
-                                  entrada entre{" "}
+                                  {t("for")} {fmtBRL(s.floatInfo.bestOutcomePrice)} — {t("needs average input float between")}{" "}
                                   <strong>
-                                    {fmtFloat(s.floatInfo.requiredAvgFloatMin)} e{" "}
+                                    {fmtFloat(s.floatInfo.requiredAvgFloatMin)} {t("and")}{" "}
                                     {fmtFloat(s.floatInfo.requiredAvgFloatMax)}
                                   </strong>
                                   .{" "}
                                   {s.floatInfo.feasibleWithCheapestInput === false ? (
                                     <span style={{ color: COLORS.rust }}>
-                                      Comprando o input mais barato ({s.floatInfo.inputWear}), o float médio
-                                      fica entre {fmtFloat(s.floatInfo.inputAchievableFloatMin)} e{" "}
-                                      {fmtFloat(s.floatInfo.inputAchievableFloatMax)} — fora dessa faixa, ou
-                                      seja, essa saída específica não sai com esse input. Pra mirar nela,
-                                      precisa de um input com float mais baixo (mais caro).
+                                      {t(
+                                        `Buying the cheapest input (${s.floatInfo.inputWear}), the average float lands between ${fmtFloat(s.floatInfo.inputAchievableFloatMin)} and ${fmtFloat(s.floatInfo.inputAchievableFloatMax)} — outside that range, meaning this specific output can't come out with this input. To aim for it, you need an input with a lower (more expensive) float.`
+                                      )}
                                     </span>
                                   ) : s.floatInfo.feasibleWithCheapestInput === true ? (
                                     <span style={{ color: COLORS.green }}>
-                                      O input mais barato ({s.floatInfo.inputWear}) já cai nessa faixa —
-                                      dá pra mirar nessa saída sem pagar mais caro no input.
+                                      {t(
+                                        `The cheapest input (${s.floatInfo.inputWear}) already falls in this range — you can aim for this output without paying more for the input.`
+                                      )}
                                     </span>
                                   ) : null}
                                 </div>
@@ -814,7 +818,7 @@ export default function Suggestions() {
                                   setCalcOpenIdx(calcOpenIdx === idx ? null : idx);
                                 }}
                               >
-                                {calcOpenIdx === idx ? "Fechar calculadora de float" : "Calculadora de float"}
+                                {calcOpenIdx === idx ? t("Close float calculator") : t("Float calculator")}
                               </button>
                               {calcOpenIdx === idx && (
                                 <FloatCalculator
@@ -847,7 +851,7 @@ export default function Suggestions() {
                                     <ItemThumb iconUrl={o.iconUrl} rarity={s.nextTier} size={26} />
                                     {o.name}
                                     <span style={{ color: o.priceIsEstimate ? COLORS.gold : COLORS.textDim }}>
-                                      ({wearLabel(o)})
+                                      ({wearLabel(o, t)})
                                     </span>
                                     {o.marketHashName && (
                                       <a
@@ -856,14 +860,16 @@ export default function Suggestions() {
                                         rel="noreferrer"
                                         onClick={(e) => e.stopPropagation()}
                                         style={{ color: COLORS.gold, display: "flex", alignItems: "center" }}
-                                        title="Abrir a saída no mercado — confira o preço e a liquidez real antes de decidir. A Steam pede pra marcar StatTrak™ e o wear certo na própria página."
+                                        title={t(
+                                          "Open the output in the market — check the real price and liquidity before deciding. Steam requires you to select StatTrak™ and the right wear on the page itself."
+                                        )}
                                       >
                                         <ExternalLink size={11} />
                                       </a>
                                     )}
                                   </span>
                                   <span style={{ color: COLORS.textDim, whiteSpace: "nowrap" }}>
-                                    {o.prob.toFixed(1)}% · mercado {fmtBRL(o.price)} → líquido {fmtBRL(o.netPrice)} · {o.minListings} anúncios
+                                    {o.prob.toFixed(1)}% · {t("market")} {fmtBRL(o.price)} → {t("net")} {fmtBRL(o.netPrice)} · {o.minListings} {t("listings")}
                                   </span>
                                 </div>
                               ))}

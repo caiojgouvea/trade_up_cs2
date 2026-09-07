@@ -1,4 +1,5 @@
 import { COLORS } from "./colors";
+import { getCurrency } from "./i18n";
 
 // Preço do Mercado Steam é o que o comprador paga. Na revenda de item CS2,
 // o vendedor recebe aproximadamente preço / 1,15 (taxas Steam + CS2).
@@ -57,13 +58,13 @@ export function computeStats(contract) {
 
   let verdict, verdictColor;
   if (roi > 15 && probLoss < 40) {
-    verdict = "Bom contrato";
+    verdict = "Good deal";
     verdictColor = COLORS.green;
   } else if (roi > 0) {
-    verdict = "Arriscado";
+    verdict = "Risky";
     verdictColor = COLORS.gold;
   } else {
-    verdict = "Furada";
+    verdict = "Trap";
     verdictColor = COLORS.rust;
   }
 
@@ -89,9 +90,15 @@ export function computeStats(contract) {
   };
 }
 
+// Nome mantido por compatibilidade com todos os componentes que já
+// importam fmtBRL — hoje formata no idioma/moeda ativos (ver lib/i18n.js),
+// não mais fixo em BRL.
 export function fmtBRL(n) {
   if (n == null || !isFinite(n)) return "—";
-  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  if (getCurrency() === "brl") {
+    return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  }
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
 export function fmtFloat(n) {
