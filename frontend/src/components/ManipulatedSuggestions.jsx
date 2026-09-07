@@ -31,6 +31,7 @@ export default function ManipulatedSuggestions() {
   const [error, setError] = useState("");
   const [minListings, setMinListings] = useState(10);
   const [stattrakFilter, setStattrakFilter] = useState("all");
+  const [rarityFilter, setRarityFilter] = useState("all");
   const [textFilter, setTextFilter] = useState("");
   const [minCost, setMinCost] = useState("");
   const [maxCost, setMaxCost] = useState("");
@@ -87,6 +88,9 @@ export default function ManipulatedSuggestions() {
       const want = stattrakFilter === "stattrak";
       rows = rows.filter((s) => s.stattrak === want);
     }
+    if (rarityFilter !== "all") {
+      rows = rows.filter((s) => s.nextTier === rarityFilter);
+    }
     if (q) {
       rows = rows.filter(
         (s) =>
@@ -108,7 +112,13 @@ export default function ManipulatedSuggestions() {
       if (typeof av === "string") return dir * av.localeCompare(bv);
       return dir * (av - bv);
     });
-  }, [suggestions, stattrakFilter, textFilter, minCost, maxCost, sort, favorites]);
+  }, [suggestions, stattrakFilter, rarityFilter, textFilter, minCost, maxCost, sort, favorites]);
+
+  const rarityOptions = useMemo(() => {
+    const order = ["Industrial Grade", "Mil-Spec Grade", "Restricted", "Classified", "Covert"];
+    const present = new Set(suggestions.map((s) => s.nextTier));
+    return order.filter((r) => present.has(r));
+  }, [suggestions]);
 
   return (
     <div
@@ -216,6 +226,19 @@ export default function ManipulatedSuggestions() {
             <option value="all">Normal + StatTrak</option>
             <option value="normal">Só Normal</option>
             <option value="stattrak">Só StatTrak</option>
+          </select>
+          <select
+            className="tuc-input"
+            style={{ width: 160 }}
+            value={rarityFilter}
+            onChange={(e) => setRarityFilter(e.target.value)}
+          >
+            <option value="all">Qualquer raridade de saída</option>
+            {rarityOptions.map((r) => (
+              <option key={r} value={r}>
+                Saída: {r}
+              </option>
+            ))}
           </select>
           <input
             className="tuc-input"
