@@ -67,6 +67,35 @@ db.exec(`
     pricing_version TEXT NOT NULL DEFAULT 'legacy',
     payload TEXT NOT NULL
   );
+
+  -- Log permanente (append-only) de todo contrato que já apareceu num
+  -- cálculo de "manipulados" — ao contrário de suggestion_cache (que só
+  -- guarda a última rodada), isso NUNCA é sobrescrito: cada rodada manual
+  -- ou exaustiva soma linhas novas, então um achado bom continua registrado
+  -- mesmo que o preço mude e ele suma da rodada seguinte.
+  CREATE TABLE IF NOT EXISTS suggestion_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    computed_at TEXT NOT NULL,
+    exhaustive INTEGER NOT NULL DEFAULT 0,
+    collection_tag TEXT,
+    collection_name TEXT,
+    tier TEXT,
+    next_tier TEXT,
+    stattrak INTEGER NOT NULL DEFAULT 0,
+    cross_collection INTEGER NOT NULL DEFAULT 0,
+    leg_count INTEGER,
+    cost REAL,
+    roi REAL,
+    best_case_roi REAL,
+    worst_case_roi REAL,
+    prob_loss REAL,
+    verdict TEXT,
+    payload TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_suggestion_history_roi ON suggestion_history(roi DESC);
+  CREATE INDEX IF NOT EXISTS idx_suggestion_history_best ON suggestion_history(best_case_roi DESC);
+  CREATE INDEX IF NOT EXISTS idx_suggestion_history_computed_at ON suggestion_history(computed_at DESC);
 `);
 
 // Migração idempotente pra bases já criadas antes destas colunas existirem.

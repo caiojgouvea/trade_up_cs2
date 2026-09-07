@@ -2,6 +2,7 @@ import { Worker } from "node:worker_threads";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { saveSuggestionCache } from "./suggestionsCache.js";
+import { recordSuggestionHistory } from "./suggestionHistory.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WORKER_PATH = path.join(__dirname, "manipulatedWorker.js");
@@ -39,6 +40,11 @@ export function startManipulatedJob({ minListings = 10, exhaustive = false } = {
         minListings,
         exhaustive,
         rate: msg.result.rate,
+        suggestions: msg.result.suggestions,
+      });
+      recordSuggestionHistory({
+        computedAt: new Date().toISOString(),
+        exhaustive,
         suggestions: msg.result.suggestions,
       });
     } else {

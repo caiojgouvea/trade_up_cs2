@@ -2,6 +2,7 @@ import { Router } from "express";
 import { computeSingleCollectionSuggestions, computeManipulatedSuggestions } from "../tradeUpEngine.js";
 import { getSuggestionCache, saveSuggestionCache } from "../suggestionsCache.js";
 import { startManipulatedJob, getManipulatedJobStatus } from "../manipulatedJob.js";
+import { recordSuggestionHistory, getSuggestionHistory, getSuggestionHistoryStats } from "../suggestionHistory.js";
 
 export const suggestionsRouter = Router();
 
@@ -38,10 +39,12 @@ suggestionsRouter.get("/manipulated", async (req, res) => {
       return res.json(cached);
     }
     const result = await computeManipulatedSuggestions({ minListings });
+    const computedAt = new Date().toISOString();
     saveSuggestionCache("manipulated", { minListings, exhaustive: false, ...result });
+    recordSuggestionHistory({ computedAt, exhaustive: false, suggestions: result.suggestions });
     res.json({
       ...result,
-      computedAt: new Date().toISOString(),
+      computedAt,
       minListings,
       exhaustive: false,
       pricingVersion: "net-strict-v2",
@@ -64,4 +67,24 @@ suggestionsRouter.post("/manipulated/refresh", (req, res) => {
 
 suggestionsRouter.get("/manipulated/refresh/status", (req, res) => {
   res.json(getManipulatedJobStatus());
+});
+
+// Log permanente de todo contrato "manipulado" já encontrado, em qualquer
+// rodada (manual ou exaustiva) — ver suggestionHistory.js. Nunca é limpo
+// automaticamente; cada rodada só soma linhas novas.
+suggestionsRouter.get("/manipulated/history", (req, res) => {
+  const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 50));
+  const offset = Math.max(0, Number(req.query.offset) || 0);
+  const sort = ["roi", "bestCaseRoi", "worstCaseRoi", "computedAt"].includes(req.query.sort)
+    ? req.query.sort
+    : "roi";
+  const minRoi = req.query.minRoi !== undefined && req.query.minRoi !== "" ? Number(req.query.minRoi) : null;
+  const minBestCaseRoi =
+    req.query.minBestCaseRoi !== undefined && req.query.minBestCaseRoi !== "" ? Number(req.query.minBestCaseRoi) : null;
+  try {
+    const result = getSuggestionHistory({ sort, limit, offset, minRoi, minBestCaseRoi });
+    res.json({ ...result, stats: getSuggestionHistoryStats() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });

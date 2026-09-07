@@ -1,14 +1,16 @@
 import { useState } from "react";
-import { Crosshair, Layers, Sparkles, Shuffle } from "lucide-react";
+import { Crosshair, Layers, Sparkles, Shuffle, History } from "lucide-react";
 import { COLORS } from "./lib/colors";
 import TradeUpComparator from "./components/TradeUpComparator";
 import CollectionsExplorer from "./components/CollectionsExplorer";
 import Suggestions from "./components/Suggestions";
 import ManipulatedSuggestions from "./components/ManipulatedSuggestions";
+import SuggestionHistory from "./components/SuggestionHistory";
 
 const TABS = [
   { id: "suggestions", label: "Sugestões", icon: Sparkles },
   { id: "manipulated", label: "Manipulados", icon: Shuffle },
+  { id: "history", label: "Histórico", icon: History },
   { id: "comparator", label: "Comparador manual", icon: Crosshair },
   { id: "collections", label: "Coleções & Preços", icon: Layers },
 ];
@@ -57,6 +59,7 @@ function App() {
 
       {tab === "suggestions" && <Suggestions />}
       {tab === "manipulated" && <ManipulatedSuggestions />}
+      {tab === "history" && <SuggestionHistory />}
       {tab === "comparator" && <TradeUpComparator />}
       {tab === "collections" && <CollectionsExplorer />}
     </div>

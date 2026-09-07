@@ -58,3 +58,10 @@ export function refreshManipulatedSuggestions(minListings = 10, exhaustive = fal
 export function getManipulatedRefreshStatus() {
   return request("/suggestions/manipulated/refresh/status");
 }
+
+export function getSuggestionHistory({ sort = "roi", limit = 50, offset = 0, minRoi, minBestCaseRoi } = {}) {
+  const params = new URLSearchParams({ sort, limit: String(limit), offset: String(offset) });
+  if (minRoi !== undefined && minRoi !== "") params.set("minRoi", String(minRoi));
+  if (minBestCaseRoi !== undefined && minBestCaseRoi !== "") params.set("minBestCaseRoi", String(minBestCaseRoi));
+  return request(`/suggestions/manipulated/history?${params}`);
+}
