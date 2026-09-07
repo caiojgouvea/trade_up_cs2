@@ -17,6 +17,12 @@ function wearLabel(o) {
   return (o.priceIsEstimate ? `${o.predictedWear}, preço estimado` : o.predictedWear) + withFloat;
 }
 
+function breakEvenLabel(stats) {
+  if (stats.breakEvenHits10 == null) return "nunca";
+  if (stats.breakEvenHits10 === 0) return "sem risco";
+  return `≥${stats.breakEvenHits10}/10`;
+}
+
 const SORT_OPTIONS = [
   { value: "bestCaseRoi", label: "Melhor caso" },
   { value: "roi", label: "Esperado" },
@@ -211,6 +217,7 @@ export default function SuggestionHistory() {
                     <th>Esperado</th>
                     <th>Pior caso</th>
                     <th>Risco</th>
+                    <th title="Rodando esse contrato 10x, quantos acertos você precisa pra não sair no prejuízo">Empate em 10x</th>
                     <th>Achado em</th>
                   </tr>
                 </thead>
@@ -262,15 +269,47 @@ export default function SuggestionHistory() {
                           {s.stats.worstCaseRoi.toFixed(1)}%
                         </td>
                         <td>{s.stats.probLoss.toFixed(0)}%</td>
+                        <td
+                          style={{ color: s.stats.breakEvenHits10 == null ? COLORS.rust : COLORS.textDim, fontSize: 11 }}
+                          title="Acertos = saídas cujo valor líquido cobre o custo. Assume ganho médio e perda média constantes a cada tentativa (aproximação)."
+                        >
+                          {breakEvenLabel(s.stats)}
+                        </td>
                         <td style={{ fontSize: 11, color: COLORS.textDim, whiteSpace: "nowrap" }}>
                           {new Date(s.computedAt).toLocaleString("pt-BR")}
                         </td>
                       </tr>
                       {expandedId === s.id && (
                         <tr>
-                          <td colSpan={11} style={{ background: COLORS.panelAlt }}>
+                          <td colSpan={12} style={{ background: COLORS.panelAlt }}>
                             <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 10 }}>
                               Mistura: {s.legs?.map((l) => `${l.count}x ${l.isSouvenir ? "Lembrança " : ""}${l.skinName} (${l.wear})`).join(" + ")}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: COLORS.text,
+                                marginBottom: 10,
+                                padding: "8px 10px",
+                                borderRadius: 6,
+                                border: `1px solid ${COLORS.border}`,
+                              }}
+                            >
+                              <strong>Rodando esse contrato 10x</strong> (custo total {fmtBRL(s.cost * 10)}):
+                              ganho médio quando acerta {fmtBRL(s.stats.avgWinProfit)} por vez, perda média
+                              quando erra {fmtBRL(s.stats.avgLossProfit)} por vez.{" "}
+                              {s.stats.breakEvenHits10 == null ? (
+                                <span style={{ color: COLORS.rust }}>
+                                  Nenhuma saída cobre o custo — não tem número de acertos que compense.
+                                </span>
+                              ) : s.stats.breakEvenHits10 === 0 ? (
+                                <span style={{ color: COLORS.green }}>Nenhuma saída dá prejuízo — sem risco de perder no total das 10x.</span>
+                              ) : (
+                                <span style={{ color: COLORS.green }}>
+                                  Acertando pelo menos <strong>{s.stats.breakEvenHits10} de 10</strong> tentativas, você já sai no
+                                  positivo ou empatado (lucro esperado ×10: {fmtBRL(s.stats.evProfit * 10)}).
+                                </span>
+                              )}
                             </div>
                             <div
                               style={{

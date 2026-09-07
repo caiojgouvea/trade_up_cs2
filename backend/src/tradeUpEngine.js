@@ -40,6 +40,34 @@ function computeContractStats(cost, outcomes) {
   const bestCaseProfit = Math.max(...netPrices) - cost;
   const worstCaseProfit = Math.min(...netPrices) - cost;
 
+  // "Quantos acertos em 10 tentativas pra não sair no prejuízo": agrupa as
+  // saídas em "ganha" (líquido >= custo) e "perde", pega o lucro/prejuízo
+  // MÉDIO de cada grupo (ponderado pela chance relativa dentro do grupo), e
+  // resolve k*ganhoMédio + (10-k)*perdaMédia >= 0 pro menor k inteiro. Isso
+  // é o que separa "arriscado mas compensa" de "arriscado e não compensa":
+  // um contrato de 80% de risco de perda ainda pode empatar acertando só
+  // 2 ou 3 vezes em 10 se o prêmio for grande o suficiente.
+  const winOutcomes = outcomes.filter((o) => netSalePrice(o.price) >= cost);
+  const loseOutcomes = outcomes.filter((o) => netSalePrice(o.price) < cost);
+  const winProbSum = winOutcomes.reduce((s, o) => s + o.prob, 0);
+  const loseProbSum = loseOutcomes.reduce((s, o) => s + o.prob, 0);
+  const avgWinProfit =
+    winProbSum > 0
+      ? winOutcomes.reduce((s, o) => s + (o.prob / winProbSum) * (netSalePrice(o.price) - cost), 0)
+      : null;
+  const avgLossProfit =
+    loseProbSum > 0
+      ? loseOutcomes.reduce((s, o) => s + (o.prob / loseProbSum) * (netSalePrice(o.price) - cost), 0)
+      : null;
+
+  let breakEvenHits10 = null;
+  if (avgWinProfit != null && avgWinProfit > 0) {
+    breakEvenHits10 =
+      avgLossProfit == null || avgLossProfit >= 0
+        ? 0
+        : Math.min(10, Math.max(0, Math.ceil((-10 * avgLossProfit) / (avgWinProfit - avgLossProfit) - 1e-9)));
+  }
+
   let verdict;
   if (roi > 15 && probLoss < 40) verdict = "Bom contrato";
   else if (roi > 0) verdict = "Arriscado";
@@ -55,6 +83,9 @@ function computeContractStats(cost, outcomes) {
     bestCaseRoi: cost > 0 ? (bestCaseProfit / cost) * 100 : 0,
     worstCaseProfit,
     worstCaseRoi: cost > 0 ? (worstCaseProfit / cost) * 100 : 0,
+    avgWinProfit,
+    avgLossProfit,
+    breakEvenHits10,
     saleFactor: STEAM_NET_SALE_FACTOR,
     probLoss: Math.min(100, Math.max(0, probLoss)),
     verdict,

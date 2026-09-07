@@ -17,6 +17,12 @@ import { computeStats, fmtBRL } from "../lib/tradeUpMath";
 import { loadContracts, saveContracts } from "../lib/storage";
 import CustomTooltip from "./CustomTooltip";
 
+function breakEvenLabel(stats) {
+  if (stats.breakEvenHits10 == null) return "nunca";
+  if (stats.breakEvenHits10 === 0) return "sem risco";
+  return `≥${stats.breakEvenHits10}/10`;
+}
+
 export default function TradeUpComparator() {
   const [contracts, setContracts] = useState(() => loadContracts());
   const [expandedId, setExpandedId] = useState(null);
@@ -297,6 +303,7 @@ export default function TradeUpComparator() {
                       <th title="Média ponderada pelas chances de cada saída">Esperado</th>
                       <th title="Lucro líquido se sair a saída mais barata possível">Pior caso</th>
                       <th>Risco</th>
+                      <th title="Rodando esse contrato 10x, quantos acertos você precisa pra não sair no prejuízo">Empate em 10x</th>
                       <th>Veredito</th>
                       <th></th>
                     </tr>
@@ -328,6 +335,12 @@ export default function TradeUpComparator() {
                             {c.stats.worstCaseRoi.toFixed(1)}%
                           </td>
                           <td>{c.stats.probLoss.toFixed(0)}%</td>
+                          <td
+                            style={{ color: c.stats.breakEvenHits10 == null ? COLORS.rust : COLORS.textDim, fontSize: 11 }}
+                            title="Acertos = saídas cujo valor líquido cobre o custo. Assume ganho médio e perda média constantes a cada tentativa (aproximação)."
+                          >
+                            {breakEvenLabel(c.stats)}
+                          </td>
                           <td>
                             <span
                               style={{
@@ -359,7 +372,7 @@ export default function TradeUpComparator() {
                         </tr>
                         {expandedId === c.id && (
                           <tr>
-                            <td colSpan={8} style={{ background: COLORS.panelAlt }}>
+                            <td colSpan={9} style={{ background: COLORS.panelAlt }}>
                               {c.stats.probOff && (
                                 <div style={{ color: COLORS.gold, fontSize: 11, marginBottom: 8 }}>
                                   Atenção: as probabilidades somam {c.stats.totalProbRaw.toFixed(0)}%, não 100%.
@@ -374,6 +387,32 @@ export default function TradeUpComparator() {
                               </div>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
                                 Valor esperado líquido: {fmtBRL(c.stats.ev)} · Lucro líquido esperado: {fmtBRL(c.stats.evProfit)} · valor bruto: {fmtBRL(c.stats.grossEv)}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 11,
+                                  color: COLORS.text,
+                                  marginBottom: 8,
+                                  padding: "8px 10px",
+                                  borderRadius: 6,
+                                  border: `1px solid ${COLORS.border}`,
+                                }}
+                              >
+                                <strong>Rodando esse contrato 10x</strong> (custo total {fmtBRL(c.cost * 10)}):
+                                ganho médio quando acerta {fmtBRL(c.stats.avgWinProfit)} por vez, perda média
+                                quando erra {fmtBRL(c.stats.avgLossProfit)} por vez.{" "}
+                                {c.stats.breakEvenHits10 == null ? (
+                                  <span style={{ color: COLORS.rust }}>
+                                    Nenhuma saída cobre o custo — não tem número de acertos que compense.
+                                  </span>
+                                ) : c.stats.breakEvenHits10 === 0 ? (
+                                  <span style={{ color: COLORS.green }}>Nenhuma saída dá prejuízo — sem risco de perder no total das 10x.</span>
+                                ) : (
+                                  <span style={{ color: COLORS.green }}>
+                                    Acertando pelo menos <strong>{c.stats.breakEvenHits10} de 10</strong> tentativas, você já sai no
+                                    positivo ou empatado (lucro esperado ×10: {fmtBRL(c.stats.evProfit * 10)}).
+                                  </span>
+                                )}
                               </div>
                               {c.outcomes.map((o, i) => (
                                 <div

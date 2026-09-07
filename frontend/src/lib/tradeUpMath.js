@@ -32,6 +32,29 @@ export function computeStats(contract) {
   const bestCaseProfit = (netPrices.length ? Math.max(...netPrices) : 0) - cost;
   const worstCaseProfit = (netPrices.length ? Math.min(...netPrices) : 0) - cost;
 
+  // "Quantos acertos em 10 tentativas pra não sair no prejuízo" — ver
+  // comentário da mesma conta em backend/src/tradeUpEngine.js.
+  const netOf = (o) => Number(o.netPrice ?? Number(o.price || 0) * STEAM_NET_SALE_FACTOR);
+  const winOutcomes = contract.outcomes.filter((o) => netOf(o) - cost >= 0);
+  const loseOutcomes = contract.outcomes.filter((o) => netOf(o) - cost < 0);
+  const winProbSum = winOutcomes.reduce((s, o) => s + Number(o.prob || 0), 0);
+  const loseProbSum = loseOutcomes.reduce((s, o) => s + Number(o.prob || 0), 0);
+  const avgWinProfit =
+    winProbSum > 0
+      ? winOutcomes.reduce((s, o) => s + (Number(o.prob || 0) / winProbSum) * (netOf(o) - cost), 0)
+      : null;
+  const avgLossProfit =
+    loseProbSum > 0
+      ? loseOutcomes.reduce((s, o) => s + (Number(o.prob || 0) / loseProbSum) * (netOf(o) - cost), 0)
+      : null;
+  let breakEvenHits10 = null;
+  if (avgWinProfit != null && avgWinProfit > 0) {
+    breakEvenHits10 =
+      avgLossProfit == null || avgLossProfit >= 0
+        ? 0
+        : Math.min(10, Math.max(0, Math.ceil((-10 * avgLossProfit) / (avgWinProfit - avgLossProfit) - 1e-9)));
+  }
+
   let verdict, verdictColor;
   if (roi > 15 && probLoss < 40) {
     verdict = "Bom contrato";
@@ -54,6 +77,9 @@ export function computeStats(contract) {
     bestCaseRoi: cost > 0 ? (bestCaseProfit / cost) * 100 : 0,
     worstCaseProfit,
     worstCaseRoi: cost > 0 ? (worstCaseProfit / cost) * 100 : 0,
+    avgWinProfit,
+    avgLossProfit,
+    breakEvenHits10,
     probLoss: Math.min(100, Math.max(0, probLoss)),
     verdict,
     verdictColor,
