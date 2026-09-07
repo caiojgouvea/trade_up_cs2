@@ -146,19 +146,26 @@ function nearestPricedBand(skinGroup, targetBand) {
 function predictOutcomePrice(outputSkin, assumedAvgFloat, rate) {
   let predictedWear = null;
   let targetBand = null;
+  let predictedFloatValue = null;
 
   if (assumedAvgFloat != null && outputSkin.floatRange) {
-    const predictedFloat = outputFloatFromAvg(
+    predictedFloatValue = outputFloatFromAvg(
       assumedAvgFloat,
       outputSkin.floatRange.min,
       outputSkin.floatRange.max
     );
-    targetBand = bandForFloat(outputSkin, predictedFloat);
+    targetBand = bandForFloat(outputSkin, predictedFloatValue);
     if (targetBand) {
       predictedWear = targetBand.name;
       const cents = priceForWear(outputSkin, targetBand.name);
       if (cents != null) {
-        return { price: (cents / 100) * rate, wear: targetBand.name, predicted: true, priceIsEstimate: false };
+        return {
+          price: (cents / 100) * rate,
+          wear: targetBand.name,
+          predicted: true,
+          priceIsEstimate: false,
+          predictedFloatValue,
+        };
       }
     }
   }
@@ -176,13 +183,14 @@ function predictOutcomePrice(outputSkin, assumedAvgFloat, rate) {
         wear: predictedWear,
         predicted: false,
         priceIsEstimate: true,
+        predictedFloatValue,
       };
     }
   }
 
   return outputSkin.avgUsdCents != null
-    ? { price: (outputSkin.avgUsdCents / 100) * rate, wear: predictedWear, predicted: false, priceIsEstimate: true }
-    : { price: null, wear: predictedWear, predicted: false, priceIsEstimate: true };
+    ? { price: (outputSkin.avgUsdCents / 100) * rate, wear: predictedWear, predicted: false, priceIsEstimate: true, predictedFloatValue }
+    : { price: null, wear: predictedWear, predicted: false, priceIsEstimate: true, predictedFloatValue };
 }
 
 // Preço (em BRL) de cada banda de wear que a skin realmente alcança, pra
@@ -427,9 +435,13 @@ export async function computeSingleCollectionSuggestions({ minListings = 10 } = 
             const predicted = predictOutcomePrice(o, assumedAvgFloat, rate);
             return {
               name: `${o.weapon} | ${o.skin}${stattrak ? " (StatTrak™)" : ""}`,
+              weapon: o.weapon,
+              skin: o.skin,
+              stattrak: !!stattrak,
               prob: 100 / outputs.length,
               price: predicted.price,
               predictedWear: predicted.wear,
+              predictedFloatValue: predicted.predictedFloatValue,
               priceIsEstimate: predicted.priceIsEstimate,
               minListings: o.minListings,
               iconUrl: o.iconUrl,
@@ -543,9 +555,13 @@ function outcomesAcrossGroups(groups, avgFloat, stattrak, rate) {
       if (predicted.price == null) continue;
       outcomes.push({
         name: `${o.weapon} | ${o.skin}${stattrak ? " (StatTrak™)" : ""}`,
+        weapon: o.weapon,
+        skin: o.skin,
+        stattrak: !!stattrak,
         prob: probEach,
         price: predicted.price,
         predictedWear: predicted.wear,
+        predictedFloatValue: predicted.predictedFloatValue,
         priceIsEstimate: predicted.priceIsEstimate,
         minListings: o.minListings,
         iconUrl: o.iconUrl,

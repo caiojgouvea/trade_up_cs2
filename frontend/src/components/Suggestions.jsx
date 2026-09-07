@@ -27,7 +27,8 @@ function steamMarketUrl(marketHashName) {
 
 function wearLabel(o) {
   if (!o.predictedWear) return "média entre wears";
-  return o.priceIsEstimate ? `${o.predictedWear}, preço estimado` : o.predictedWear;
+  const withFloat = o.predictedFloatValue != null ? ` · float ${fmtFloat(o.predictedFloatValue)}` : "";
+  return (o.priceIsEstimate ? `${o.predictedWear}, preço estimado` : o.predictedWear) + withFloat;
 }
 
 const VERDICT_COLOR = {
