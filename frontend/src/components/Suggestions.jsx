@@ -20,6 +20,7 @@ import { getSuggestions, syncAllCollections, getSyncAllStatus } from "../lib/api
 import SuggestionsTooltip from "./SuggestionsTooltip";
 import ItemThumb from "./ItemThumb";
 import FloatCalculator from "./FloatCalculator";
+import Pagination from "./Pagination";
 
 function steamMarketUrl(marketHashName) {
   return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(marketHashName)}`;
@@ -54,6 +55,8 @@ export default function Suggestions() {
   const [calcOpenIdx, setCalcOpenIdx] = useState(null);
   const [syncStatus, setSyncStatus] = useState(null);
   const [favorites, setFavorites] = useState(() => loadFavoriteSuggestions());
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const statusPollRef = useRef(null);
   const reloadPollRef = useRef(null);
 
@@ -176,6 +179,29 @@ export default function Suggestions() {
       return dir * (av - bv);
     });
   }, [suggestions, stattrakFilter, rarityFilter, riskFilter, textFilter, minCost, maxCost, sort, favorites]);
+
+  // Volta pra página 1 quando filtro/ordenação/dataset muda, sem useEffect —
+  // ajusta durante o render em vez de disparar outro ciclo de commit.
+  const filterSignature = `${stattrakFilter}|${rarityFilter}|${riskFilter}|${textFilter}|${minCost}|${maxCost}|${sort.key}|${sort.dir}`;
+  const prevFilterSignatureRef = useRef(filterSignature);
+  const prevSuggestionsRef = useRef(suggestions);
+  if (prevFilterSignatureRef.current !== filterSignature || prevSuggestionsRef.current !== suggestions) {
+    prevFilterSignatureRef.current = filterSignature;
+    prevSuggestionsRef.current = suggestions;
+    if (page !== 1) setPage(1);
+    if (expandedIdx !== null) setExpandedIdx(null);
+    if (calcOpenIdx !== null) setCalcOpenIdx(null);
+  }
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const paged = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  function changePage(next) {
+    setPage(Math.min(Math.max(1, next), pageCount));
+    setExpandedIdx(null);
+    setCalcOpenIdx(null);
+  }
 
   const rarityOptions = useMemo(() => {
     const order = ["Industrial Grade", "Mil-Spec Grade", "Restricted", "Classified", "Covert"];
@@ -456,7 +482,7 @@ export default function Suggestions() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((s, idx) => (
+                    {paged.map((s, idx) => (
                       <Fragment key={idx}>
                         <tr
                           style={{ cursor: "pointer" }}
@@ -752,6 +778,17 @@ export default function Suggestions() {
                   </tbody>
                 </table>
               </div>
+              <Pagination
+                page={currentPage}
+                pageCount={pageCount}
+                total={filtered.length}
+                pageSize={pageSize}
+                onPageChange={changePage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setPage(1);
+                }}
+              />
             </div>
           </>
         )}
