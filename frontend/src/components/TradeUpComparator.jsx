@@ -113,7 +113,7 @@ export default function TradeUpComparator() {
         boxSizing: "border-box",
       }}
     >
-      <div style={{ maxWidth: 1200, margin: "0 auto 24px" }}>
+      <div style={{ maxWidth: "min(1800px, 96vw)", margin: "0 auto 24px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Crosshair size={22} color={COLORS.gold} />
           <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Comparador de Trade-Ups</h1>

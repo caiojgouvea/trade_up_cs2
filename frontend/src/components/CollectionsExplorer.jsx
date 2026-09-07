@@ -205,7 +205,7 @@ export default function CollectionsExplorer() {
         boxSizing: "border-box",
       }}
     >
-      <div style={{ maxWidth: 1200, margin: "0 auto 24px" }}>
+      <div style={{ maxWidth: "min(1800px, 96vw)", margin: "0 auto 24px" }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Coleções &amp; Preços</h1>
         <p style={{ color: COLORS.textDim, fontSize: 13, marginTop: 6, maxWidth: 640 }}>
           Preços vindos do Steam Community Market. A listagem em massa usa preço estimado
@@ -214,7 +214,7 @@ export default function CollectionsExplorer() {
         </p>
       </div>
 
-      <div style={{ maxWidth: 1200, margin: "0 auto", display: "grid", gridTemplateColumns: "300px 1fr", gap: 20 }}>
+      <div style={{ maxWidth: "min(1800px, 96vw)", margin: "0 auto", display: "grid", gridTemplateColumns: "300px 1fr", gap: 20 }}>
         {/* COLLECTIONS LIST */}
         <div
           style={{

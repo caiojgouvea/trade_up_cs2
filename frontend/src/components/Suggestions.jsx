@@ -241,7 +241,7 @@ export default function Suggestions() {
         boxSizing: "border-box",
       }}
     >
-      <div style={{ maxWidth: 1200, margin: "0 auto 20px" }}>
+      <div style={{ maxWidth: "min(1800px, 96vw)", margin: "0 auto 20px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Sugestões de Trade-Up</h1>
@@ -287,7 +287,7 @@ export default function Suggestions() {
         )}
       </div>
 
-      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+      <div style={{ maxWidth: "min(1800px, 96vw)", margin: "0 auto" }}>
         {error && (
           <div
             style={{
