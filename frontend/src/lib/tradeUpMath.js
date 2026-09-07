@@ -28,6 +28,10 @@ export function computeStats(contract) {
     {}
   );
 
+  const netPrices = contract.outcomes.map((o) => Number(o.netPrice ?? Number(o.price || 0) * STEAM_NET_SALE_FACTOR));
+  const bestCaseProfit = (netPrices.length ? Math.max(...netPrices) : 0) - cost;
+  const worstCaseProfit = (netPrices.length ? Math.min(...netPrices) : 0) - cost;
+
   let verdict, verdictColor;
   if (roi > 15 && probLoss < 40) {
     verdict = "Bom contrato";
@@ -46,6 +50,10 @@ export function computeStats(contract) {
     ev,
     evProfit,
     roi,
+    bestCaseProfit,
+    bestCaseRoi: cost > 0 ? (bestCaseProfit / cost) * 100 : 0,
+    worstCaseProfit,
+    worstCaseRoi: cost > 0 ? (worstCaseProfit / cost) * 100 : 0,
     probLoss: Math.min(100, Math.max(0, probLoss)),
     verdict,
     verdictColor,

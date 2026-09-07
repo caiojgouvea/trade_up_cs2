@@ -16,7 +16,7 @@ export function getSuggestionCache(kind) {
 export function saveSuggestionCache(kind, { minListings, exhaustive, rate, suggestions }) {
   db.prepare(
     `INSERT INTO suggestion_cache (kind, computed_at, min_listings, exhaustive, rate, pricing_version, payload)
-     VALUES (?, ?, ?, ?, ?, 'net-strict-v1', ?)
+     VALUES (?, ?, ?, ?, ?, 'net-strict-v2', ?)
      ON CONFLICT(kind) DO UPDATE SET
        computed_at = excluded.computed_at,
        min_listings = excluded.min_listings,

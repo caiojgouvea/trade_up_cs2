@@ -32,6 +32,14 @@ function computeContractStats(cost, outcomes) {
   const probLoss =
     (outcomes.filter((o) => netSalePrice(o.price) < cost).reduce((s, o) => s + o.prob, 0) / totalProbRaw) * 100;
 
+  // Melhor/pior caso = lucro líquido SE a saída mais cara/mais barata for a
+  // que sair (não pesa pela probabilidade, é o extremo do intervalo). Serve
+  // pra contratos de alto risco (tipo 50/50) onde a média sozinha esconde o
+  // quão bom o lado bom pode ser — ou quão ruim o lado ruim.
+  const netPrices = outcomes.map((o) => netSalePrice(o.price));
+  const bestCaseProfit = Math.max(...netPrices) - cost;
+  const worstCaseProfit = Math.min(...netPrices) - cost;
+
   let verdict;
   if (roi > 15 && probLoss < 40) verdict = "Bom contrato";
   else if (roi > 0) verdict = "Arriscado";
@@ -43,6 +51,10 @@ function computeContractStats(cost, outcomes) {
     ev,
     evProfit,
     roi,
+    bestCaseProfit,
+    bestCaseRoi: cost > 0 ? (bestCaseProfit / cost) * 100 : 0,
+    worstCaseProfit,
+    worstCaseRoi: cost > 0 ? (worstCaseProfit / cost) * 100 : 0,
     saleFactor: STEAM_NET_SALE_FACTOR,
     probLoss: Math.min(100, Math.max(0, probLoss)),
     verdict,
@@ -736,7 +748,17 @@ function bestManipulatedMix(inputUnits, outputs, stattrak, rate) {
         if (!Number.isFinite(stats.roi)) continue;
 
         if (!best || stats.roi > best.stats.roi) {
-          best = { a, countA, b, countB, avgFloat, costBrl, outcomes, stats, crossCollection: false };
+          best = {
+            legInfos: [
+              { unit: a, count: countA },
+              { unit: b, count: countB },
+            ],
+            avgFloat,
+            costBrl,
+            outcomes,
+            stats,
+            crossCollection: false,
+          };
         }
       }
     }
@@ -789,7 +811,83 @@ function bestCrossCollectionMix(primaryUnits, primaryCollectionTag, primaryOutpu
         if (!Number.isFinite(stats.roi)) continue;
 
         if (!best || stats.roi > best.stats.roi) {
-          best = { p, countP, w, countW, avgFloat, costBrl, outcomes, stats, crossCollection: true };
+          best = {
+            legInfos: [
+              { unit: p, count: countP },
+              { unit: w, count: countW },
+            ],
+            avgFloat,
+            costBrl,
+            outcomes,
+            stats,
+            crossCollection: true,
+          };
+        }
+      }
+    }
+  }
+  return best;
+}
+
+// Generaliza a mistura pra 3 tipos de unidade — podendo vir de até 3
+// coleções diferentes ao mesmo tempo, não só principal + 1 coringa. O
+// argumento de "2 pernas basta" em bestManipulatedMix vale pra minimizar
+// custo sujeito a UM alvo de float fixo; mas cada alvo de float diferente
+// pode acertar uma banda de preço de saída diferente (o preço muda em
+// degraus, não linearmente), então testar trincas pode achar um degrau que
+// nenhum par alcança. Cresce ao cubo do tamanho do pool, por isso o pool
+// aqui (`candidates`) já vem bem mais restrito — só extremos de float e as
+// entradas mais baratas de cada lado, escolhidos por quem chama.
+function bestTripleMix(candidates, outputsForTag, stattrak, rate) {
+  const usable = candidates
+    .map((u) => {
+      const floatMid = unitFloatMid(u);
+      return floatMid != null ? { ...u, floatMid } : null;
+    })
+    .filter((u) => u && outputsForTag(u.skin.collectionTag)?.length);
+  if (usable.length < 3) return null;
+
+  let best = null;
+  for (let i = 0; i < usable.length; i++) {
+    for (let j = i + 1; j < usable.length; j++) {
+      for (let k = j + 1; k < usable.length; k++) {
+        const legs = [usable[i], usable[j], usable[k]];
+        for (let c1 = 1; c1 <= 8; c1++) {
+          for (let c2 = 1; c2 <= 9 - c1; c2++) {
+            const c3 = 10 - c1 - c2;
+            const counts = [c1, c2, c3];
+            const avgFloat =
+              (legs[0].floatMid * c1 + legs[1].floatMid * c2 + legs[2].floatMid * c3) / 10;
+            const costCents =
+              legs[0].wear.priceUsdCents * c1 + legs[1].wear.priceUsdCents * c2 + legs[2].wear.priceUsdCents * c3;
+            const costBrl = (costCents / 100) * rate;
+
+            const groups = new Map();
+            for (let idx = 0; idx < 3; idx++) {
+              const tag = legs[idx].skin.collectionTag;
+              const outputs = outputsForTag(tag);
+              const existing = groups.get(tag);
+              if (existing) existing.count += counts[idx];
+              else groups.set(tag, { count: counts[idx], outputs });
+            }
+
+            const outcomes = outcomesAcrossGroups(groups, avgFloat, stattrak, rate);
+            if (!hasVerifiedPrices(outcomes)) continue;
+
+            const stats = computeContractStats(costBrl, outcomes);
+            if (!Number.isFinite(stats.roi)) continue;
+
+            if (!best || stats.roi > best.stats.roi) {
+              best = {
+                legInfos: legs.map((leg, idx) => ({ unit: leg, count: counts[idx] })),
+                avgFloat,
+                costBrl,
+                outcomes,
+                stats,
+                crossCollection: new Set(legs.map((l) => l.skin.collectionTag)).size > 1,
+              };
+            }
+          }
         }
       }
     }
@@ -858,19 +956,28 @@ export async function computeManipulatedSuggestions({ minListings = 10, exhausti
       // custo explodir. Pras raridades baixas (Consumer/Industrial/Mil-Spec,
       // com milhares de linhas) mantém o corte pequeno — exceto no modo
       // exaustivo (job em background), que usa tudo, em qualquer raridade.
+      const lowFloatSorted = [...withFloat].sort(
+        (a, b) => a.floatMid - b.floatMid || a.wear.priceUsdCents - b.wear.priceUsdCents
+      );
+      const highFloatSorted = [...withFloat].sort(
+        (a, b) => b.floatMid - a.floatMid || a.wear.priceUsdCents - b.wear.priceUsdCents
+      );
+
       let wildcardPool;
       if (exhaustive) {
         wildcardPool = withFloat;
       } else {
         const cap = tier === "Restricted" || tier === "Classified" ? 200 : 15;
-        const lowFloat = [...withFloat]
-          .sort((a, b) => a.floatMid - b.floatMid || a.wear.priceUsdCents - b.wear.priceUsdCents)
-          .slice(0, cap);
-        const highFloat = [...withFloat]
-          .sort((a, b) => b.floatMid - a.floatMid || a.wear.priceUsdCents - b.wear.priceUsdCents)
-          .slice(0, cap);
-        wildcardPool = [...lowFloat, ...highFloat];
+        wildcardPool = [...lowFloatSorted.slice(0, cap), ...highFloatSorted.slice(0, cap)];
       }
+
+      // Pool bem menor pra mistura de 3 pernas (ver bestTripleMix): o espaço
+      // de busca cresce ao cubo do tamanho do pool, então mesmo no modo
+      // exaustivo isso fica bem mais restrito que o coringa de 2 pernas —
+      // só os extremos de float, que é onde a otimização de custo por
+      // float-alvo se concentra.
+      const tripleCap = exhaustive ? 15 : 5;
+      const tripleExtremes = [...lowFloatSorted.slice(0, tripleCap), ...highFloatSorted.slice(0, tripleCap)];
 
       for (const [collectionTag, byRarity] of menu) {
         const outputs = outputsFor(collectionTag);
@@ -918,8 +1025,25 @@ export async function computeManipulatedSuggestions({ minListings = 10, exhausti
           stattrak,
           rate
         );
+        // Trinca: entradas mais baratas da própria coleção + extremos de
+        // float de fora, pra tentar combos de até 3 coleções ao mesmo tempo
+        // (mais risco, mas às vezes acha um degrau de preço que nenhum par
+        // alcança sozinho). Mesmo com o pool bem menor que o do coringa de 2
+        // pernas, o custo cúbico é alto demais pra rota síncrona (testado:
+        // ~30s contra ~0,2s sem isso) — só roda no job em background.
+        const cheapestPrimary = [...inputUnits]
+          .sort((a, b) => a.wear.priceUsdCents - b.wear.priceUsdCents)
+          .slice(0, 3);
+        const tripleCandidates = [
+          ...cheapestPrimary,
+          ...tripleExtremes.filter((u) => u.skin.collectionTag !== collectionTag),
+        ];
+        const tripleMix =
+          exhaustive && tripleCandidates.length >= 3
+            ? bestTripleMix(tripleCandidates, outputsFor, stattrak, rate)
+            : null;
 
-        const mix = [sameCollectionMix, crossMix]
+        const mix = [sameCollectionMix, crossMix, tripleMix]
           .filter(Boolean)
           .reduce((best, m) => (!best || m.stats.roi > best.stats.roi ? m : best), null);
         if (!mix) continue;
@@ -928,11 +1052,6 @@ export async function computeManipulatedSuggestions({ minListings = 10, exhausti
         // uma margem real — senão é só ruído numérico.
         if (baselineStats && mix.stats.roi <= baselineStats.roi + 0.5) continue;
 
-        const legA = mix.crossCollection ? mix.p : mix.a;
-        const countA = mix.crossCollection ? mix.countP : mix.countA;
-        const legB = mix.crossCollection ? mix.w : mix.b;
-        const countB = mix.crossCollection ? mix.countW : mix.countB;
-
         suggestions.push({
           collectionTag,
           collectionName: collectionNames.get(collectionTag) ?? collectionTag,
@@ -940,10 +1059,7 @@ export async function computeManipulatedSuggestions({ minListings = 10, exhausti
           nextTier,
           stattrak: !!stattrak,
           crossCollection: mix.crossCollection,
-          legs: [
-            buildLeg(legA, countA, stattrak, rate, collectionNames),
-            buildLeg(legB, countB, stattrak, rate, collectionNames),
-          ],
+          legs: mix.legInfos.map(({ unit, count }) => buildLeg(unit, count, stattrak, rate, collectionNames)),
           assumedAvgFloat: mix.avgFloat,
           cost: mix.costBrl,
           baselineCost: baselineCostBrl,

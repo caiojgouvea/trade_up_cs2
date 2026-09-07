@@ -442,7 +442,9 @@ export default function ManipulatedSuggestions() {
                     <th>Mistura de entrada</th>
                     <th style={{ cursor: "pointer" }} onClick={() => toggleSort("cost")}>Custo (10x)</th>
                     <th>Custo uniforme</th>
-                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.roi")}>Retorno esp.</th>
+                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.bestCaseRoi")} title="Lucro líquido se sair a saída mais cara possível">Melhor caso</th>
+                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.roi")} title="Média ponderada pelas chances de cada saída">Esperado</th>
+                    <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.worstCaseRoi")} title="Lucro líquido se sair a saída mais barata possível">Pior caso</th>
                     <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.probLoss")}>Risco</th>
                     <th>Veredito</th>
                     <th>Saídas possíveis</th>
@@ -550,9 +552,17 @@ export default function ManipulatedSuggestions() {
                               </div>
                             )}
                           </td>
+                          <td style={{ color: s.stats.bestCaseProfit >= 0 ? COLORS.green : COLORS.rust }}>
+                            {s.stats.bestCaseRoi >= 0 ? "+" : ""}
+                            {s.stats.bestCaseRoi.toFixed(1)}%
+                          </td>
                           <td style={{ color: s.stats.evProfit >= 0 ? COLORS.green : COLORS.rust }}>
                             {s.stats.roi >= 0 ? "+" : ""}
                             {s.stats.roi.toFixed(1)}%
+                          </td>
+                          <td style={{ color: s.stats.worstCaseProfit >= 0 ? COLORS.green : COLORS.rust }}>
+                            {s.stats.worstCaseRoi >= 0 ? "+" : ""}
+                            {s.stats.worstCaseRoi.toFixed(1)}%
                           </td>
                           <td>{s.stats.probLoss.toFixed(0)}%</td>
                           <td>
@@ -615,7 +625,13 @@ export default function ManipulatedSuggestions() {
                         </tr>
                         {expandedIdx === idx && (
                           <tr>
-                            <td colSpan={11} style={{ background: COLORS.panelAlt }}>
+                            <td colSpan={13} style={{ background: COLORS.panelAlt }}>
+                              <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
+                                Melhor caso: {fmtBRL(s.stats.bestCaseProfit)} ({s.stats.bestCaseRoi >= 0 ? "+" : ""}
+                                {s.stats.bestCaseRoi.toFixed(1)}%) · Pior caso: {fmtBRL(s.stats.worstCaseProfit)} (
+                                {s.stats.worstCaseRoi >= 0 ? "+" : ""}
+                                {s.stats.worstCaseRoi.toFixed(1)}%)
+                              </div>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
                                 Valor esperado líquido: {fmtBRL(s.stats.ev)} · Lucro líquido esperado:{" "}
                                 {fmtBRL(s.stats.evProfit)} · {s.outcomeCount} saídas possíveis
@@ -650,13 +666,26 @@ export default function ManipulatedSuggestions() {
                                     border: `1px solid ${COLORS.rust}`,
                                   }}
                                 >
-                                  <strong style={{ color: COLORS.rust }}>Cross-coleção:</strong> uma das
-                                  pernas é de <strong>{s.legs.find((l) => l.collectionTag !== s.collectionTag)?.collectionName}</strong>,
-                                  não de {s.collectionName}. O jogo sorteia a saída proporcional a quantos
-                                  dos 10 itens vieram de cada coleção — então parte real da chance (marcada
-                                  como "outra coleção" abaixo) sai de lá, não de {s.collectionName}. Isso é
-                                  esperado, não um erro: é a troca que faz o float ficar mais barato de
-                                  atingir.
+                                  <strong style={{ color: COLORS.rust }}>Cross-coleção:</strong>{" "}
+                                  {[...new Set(
+                                    s.legs.filter((l) => l.collectionTag !== s.collectionTag).map((l) => l.collectionName)
+                                  )].length > 1 ? (
+                                    <>
+                                      pernas vêm de <strong>{[...new Set(
+                                        s.legs.filter((l) => l.collectionTag !== s.collectionTag).map((l) => l.collectionName)
+                                      )].join(" e ")}</strong>
+                                    </>
+                                  ) : (
+                                    <>
+                                      uma das pernas é de{" "}
+                                      <strong>{s.legs.find((l) => l.collectionTag !== s.collectionTag)?.collectionName}</strong>
+                                    </>
+                                  )}
+                                  , não (só) de {s.collectionName}. O jogo sorteia a saída proporcional a
+                                  quantos dos 10 itens vieram de cada coleção — então parte real da chance
+                                  (marcada como "outra coleção" abaixo) sai de lá. Isso é esperado, não um
+                                  erro: é a troca que faz o float ficar mais barato de atingir — quanto mais
+                                  coleções misturadas, maior o risco, mas às vezes o retorno também.
                                 </div>
                               )}
                               <div

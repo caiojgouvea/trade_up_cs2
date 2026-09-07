@@ -34,7 +34,7 @@ suggestionsRouter.get("/manipulated", async (req, res) => {
     // O cache guarda um único cálculo. Só é válido quando foi calculado
     // com o mesmo piso de liquidez solicitado; caso contrário, resultados
     // com poucos anúncios poderiam aparecer ao aumentar esse filtro.
-    if (cached && cached.minListings === minListings && cached.pricingVersion === "net-strict-v1") {
+    if (cached && cached.minListings === minListings && cached.pricingVersion === "net-strict-v2") {
       return res.json(cached);
     }
     const result = await computeManipulatedSuggestions({ minListings });
@@ -44,7 +44,7 @@ suggestionsRouter.get("/manipulated", async (req, res) => {
       computedAt: new Date().toISOString(),
       minListings,
       exhaustive: false,
-      pricingVersion: "net-strict-v1",
+      pricingVersion: "net-strict-v2",
     });
   } catch (e) {
     res.status(502).json({ error: e.message });

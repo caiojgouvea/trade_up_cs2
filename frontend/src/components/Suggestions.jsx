@@ -473,7 +473,9 @@ export default function Suggestions() {
                       <th>ST</th>
                       <th>Entrada mais barata</th>
                       <th style={{ cursor: "pointer" }} onClick={() => toggleSort("cost")}>Custo</th>
-                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.roi")}>Retorno líquido esp.</th>
+                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.bestCaseRoi")} title="Lucro líquido se sair a saída mais cara possível">Melhor caso</th>
+                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.roi")} title="Média ponderada pelas chances de cada saída">Esperado</th>
+                      <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.worstCaseRoi")} title="Lucro líquido se sair a saída mais barata possível">Pior caso</th>
                       <th style={{ cursor: "pointer" }} onClick={() => toggleSort("stats.probLoss")}>Risco</th>
                       <th>Veredito</th>
                       <th>Float p/ melhor saída</th>
@@ -561,9 +563,17 @@ export default function Suggestions() {
                             </div>
                           </td>
                           <td title={`${s.inputCount ?? 10} inputs`}>{fmtBRL(s.cost)}</td>
+                          <td style={{ color: s.stats.bestCaseProfit >= 0 ? COLORS.green : COLORS.rust }}>
+                            {s.stats.bestCaseRoi >= 0 ? "+" : ""}
+                            {s.stats.bestCaseRoi.toFixed(1)}%
+                          </td>
                           <td style={{ color: s.stats.evProfit >= 0 ? COLORS.green : COLORS.rust }}>
                             {s.stats.roi >= 0 ? "+" : ""}
                             {s.stats.roi.toFixed(1)}%
+                          </td>
+                          <td style={{ color: s.stats.worstCaseProfit >= 0 ? COLORS.green : COLORS.rust }}>
+                            {s.stats.worstCaseRoi >= 0 ? "+" : ""}
+                            {s.stats.worstCaseRoi.toFixed(1)}%
                           </td>
                           <td>{s.stats.probLoss.toFixed(0)}%</td>
                           <td>
@@ -654,7 +664,13 @@ export default function Suggestions() {
                         </tr>
                         {expandedIdx === idx && (
                           <tr>
-                            <td colSpan={12} style={{ background: COLORS.panelAlt }}>
+                            <td colSpan={14} style={{ background: COLORS.panelAlt }}>
+                              <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
+                                Melhor caso: {fmtBRL(s.stats.bestCaseProfit)} ({s.stats.bestCaseRoi >= 0 ? "+" : ""}
+                                {s.stats.bestCaseRoi.toFixed(1)}%) · Pior caso: {fmtBRL(s.stats.worstCaseProfit)} (
+                                {s.stats.worstCaseRoi >= 0 ? "+" : ""}
+                                {s.stats.worstCaseRoi.toFixed(1)}%)
+                              </div>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
                                 Valor esperado líquido: {fmtBRL(s.stats.ev)} · Lucro líquido esperado:{" "}
                                 {fmtBRL(s.stats.evProfit)} · valor bruto antes da taxa: {fmtBRL(s.stats.grossEv)} · {s.outcomeCount} saídas possíveis (1/

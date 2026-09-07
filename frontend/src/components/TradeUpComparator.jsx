@@ -293,7 +293,9 @@ export default function TradeUpComparator() {
                     <tr>
                       <th>Contrato</th>
                       <th>Custo</th>
-                      <th>Retorno líquido esp.</th>
+                      <th title="Lucro líquido se sair a saída mais cara possível">Melhor caso</th>
+                      <th title="Média ponderada pelas chances de cada saída">Esperado</th>
+                      <th title="Lucro líquido se sair a saída mais barata possível">Pior caso</th>
                       <th>Risco</th>
                       <th>Veredito</th>
                       <th></th>
@@ -313,9 +315,17 @@ export default function TradeUpComparator() {
                             </div>
                           </td>
                           <td>{fmtBRL(c.cost)}</td>
+                          <td style={{ color: c.stats.bestCaseProfit >= 0 ? COLORS.green : COLORS.rust }}>
+                            {c.stats.bestCaseRoi >= 0 ? "+" : ""}
+                            {c.stats.bestCaseRoi.toFixed(1)}%
+                          </td>
                           <td style={{ color: c.stats.evProfit >= 0 ? COLORS.green : COLORS.rust }}>
                             {c.stats.roi >= 0 ? "+" : ""}
                             {c.stats.roi.toFixed(1)}%
+                          </td>
+                          <td style={{ color: c.stats.worstCaseProfit >= 0 ? COLORS.green : COLORS.rust }}>
+                            {c.stats.worstCaseRoi >= 0 ? "+" : ""}
+                            {c.stats.worstCaseRoi.toFixed(1)}%
                           </td>
                           <td>{c.stats.probLoss.toFixed(0)}%</td>
                           <td>
@@ -349,13 +359,19 @@ export default function TradeUpComparator() {
                         </tr>
                         {expandedId === c.id && (
                           <tr>
-                            <td colSpan={6} style={{ background: COLORS.panelAlt }}>
+                            <td colSpan={8} style={{ background: COLORS.panelAlt }}>
                               {c.stats.probOff && (
                                 <div style={{ color: COLORS.gold, fontSize: 11, marginBottom: 8 }}>
                                   Atenção: as probabilidades somam {c.stats.totalProbRaw.toFixed(0)}%, não 100%.
                                   O cálculo normalizou automaticamente.
                                 </div>
                               )}
+                              <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
+                                Melhor caso: {fmtBRL(c.stats.bestCaseProfit)} ({c.stats.bestCaseRoi >= 0 ? "+" : ""}
+                                {c.stats.bestCaseRoi.toFixed(1)}%) · Pior caso: {fmtBRL(c.stats.worstCaseProfit)} (
+                                {c.stats.worstCaseRoi >= 0 ? "+" : ""}
+                                {c.stats.worstCaseRoi.toFixed(1)}%)
+                              </div>
                               <div style={{ fontSize: 11, color: COLORS.textDim, marginBottom: 6 }}>
                                 Valor esperado líquido: {fmtBRL(c.stats.ev)} · Lucro líquido esperado: {fmtBRL(c.stats.evProfit)} · valor bruto: {fmtBRL(c.stats.grossEv)}
                               </div>
